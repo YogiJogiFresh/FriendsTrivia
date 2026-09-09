@@ -663,8 +663,14 @@ export function HostEditorPage() {
 
         <Card>
           {selectedCategory ? (
-            <>
-              <div className={styles.panelHeader}>
+            <details open className={styles.categoryEditor}>
+              <summary className={styles.categorySummary}>
+                <span>Category</span>
+                <strong>{selectedCategory.title || 'Untitled category'}</strong>
+                <Badge tone="neutral">{selectedCategory.clues.length} clues</Badge>
+              </summary>
+              <div className={styles.categoryContent}>
+                <div className={styles.panelHeader}>
                 <TextField
                   label="Category title"
                   value={selectedCategory.title}
@@ -681,7 +687,15 @@ export function HostEditorPage() {
               </div>
               <div className={styles.clueList}>
                 {selectedCategory.clues.map((clue) => (
-                  <Card key={clue.key} className={styles.clueCard}>
+                  <details key={clue.key} open className={styles.clueCard}>
+                    <summary className={styles.clueSummary}>
+                      <span>
+                        {clue.finalQuestion ? 'Final Question' : `${clue.boardValue} points`}
+                      </span>
+                      <strong>{clue.prompt.trim() || 'Untitled clue'}</strong>
+                      <Badge tone="info">{clueTypeLabels[clue.type]}</Badge>
+                    </summary>
+                    <div className={styles.clueContent}>
                     <label className={styles.finalQuestionToggle}>
                       <input
                         type="checkbox"
@@ -961,11 +975,13 @@ export function HostEditorPage() {
                     <span className={styles.clueTypeBadgeRow}>
                       <Badge tone="info">{clueTypeLabels[clue.type]}</Badge>
                     </span>
-                  </Card>
+                    </div>
+                  </details>
                 ))}
                 {selectedCategory.clues.length === 0 ? <p>No clues yet in this category.</p> : null}
               </div>
-            </>
+              </div>
+            </details>
           ) : (
             <p>Select or add a category to start adding clues.</p>
           )}
