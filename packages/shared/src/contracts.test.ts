@@ -149,4 +149,16 @@ describe('shared contract schemas', () => {
     expect(GameSettingsSchema.safeParse({ teams: ['Red'] }).success).toBe(false)
     expect(GameSettingsSchema.safeParse({ teams: ['Red', 'red'] }).success).toBe(false)
   })
+
+  it('accepts only unique supported clue specials', () => {
+    expect(
+      GameSettingsSchema.safeParse({
+        specials: ['double_points', 'double_or_nothing', 'speed_round'],
+      }).success,
+    ).toBe(true)
+    expect(
+      GameSettingsSchema.safeParse({ specials: ['double_points', 'double_points'] }).success,
+    ).toBe(false)
+    expect(GameSettingsSchema.safeParse({ specials: ['mystery_special'] }).success).toBe(false)
+  })
 })

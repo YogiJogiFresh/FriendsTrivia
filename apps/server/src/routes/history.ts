@@ -77,7 +77,8 @@ export async function registerHistoryRoutes(
       .prepare(
         `SELECT p.nickname, p.team_name AS team, s.category_title AS category, s.clue_prompt AS prompt,
                 s.clue_type AS type,
-                s.answer_json, s.elapsed_ms, s.correct, s.rank, s.points_awarded
+                s.answer_json, s.elapsed_ms, s.correct, s.rank, s.points_awarded,
+                s.evaluation_json
          FROM submissions s
          JOIN players p ON p.id = s.player_id
          WHERE s.room_id = ? ORDER BY s.received_at, p.nickname`,

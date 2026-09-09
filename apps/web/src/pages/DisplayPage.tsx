@@ -3,8 +3,10 @@ import { useParams } from 'react-router-dom'
 import { useRoomWatch } from '../data/hooks'
 import { useCountdown } from '../data/hooks/useCountdown'
 import { getSocket } from '../lib/socketClient'
+import { SPECIAL_DETAILS } from '../data/types'
 import {
   Button,
+  Badge,
   CategoryBoard,
   ConnectionStatusPill,
   GameTimer,
@@ -229,6 +231,12 @@ export function DisplayPage() {
               ? 'Final Question'
               : game.categories.find((category) => category.id === currentClue.categoryId)?.title}
           </span>
+          {currentClue.special ? (
+            <div className={styles.specialBanner}>
+              <Badge tone="warning">{SPECIAL_DETAILS[currentClue.special].name}</Badge>
+              <span>{SPECIAL_DETAILS[currentClue.special].description}</span>
+            </div>
+          ) : null}
           <p className={styles.cluePrompt}>{currentClue.prompt}</p>
           {game.room.finalRound ? (
             <span className={styles.clueValue}>Final Question</span>
@@ -247,6 +255,12 @@ export function DisplayPage() {
       {game.room.phase === 'REVEAL' && currentClue ? (
         <div className={styles.main}>
           <span className={styles.categoryLabel}>Answer revealed</span>
+          {currentClue.special ? (
+            <div className={styles.specialBanner}>
+              <Badge tone="warning">{SPECIAL_DETAILS[currentClue.special].name}</Badge>
+              <span>{SPECIAL_DETAILS[currentClue.special].description}</span>
+            </div>
+          ) : null}
           <p className={styles.cluePrompt}>{currentClue.prompt}</p>
           {currentClue.revealedAnswer ? (
             <p className={styles.revealedAnswer}>{currentClue.revealedAnswer}</p>
@@ -281,7 +295,10 @@ export function DisplayPage() {
                         {result.overbid ? ' — over' : ''}
                       </span>
                     </span>
-                    <strong>+{result.pointsAwarded}</strong>
+                    <strong>
+                      {result.pointsAwarded > 0 ? '+' : ''}
+                      {result.pointsAwarded}
+                    </strong>
                   </li>
                 ))}
               </ol>

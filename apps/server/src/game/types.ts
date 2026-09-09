@@ -11,12 +11,15 @@ export type GamePhase =
   | 'FINISHED'
   | 'PAUSED'
 
+export type SpecialType = 'double_points' | 'double_or_nothing' | 'speed_round'
+
 export interface GameSettings {
   timerSeconds: number
   speedBonusMax: number
   priceRankPercentages: number[]
   uniqueNicknames: boolean
   teams?: string[]
+  specials?: SpecialType[]
 }
 
 export interface RoomState {
@@ -29,6 +32,7 @@ export interface RoomState {
   remainingMs?: number | undefined
   revealedAt?: string | undefined
   finalRound?: boolean | undefined
+  specialAssignments?: Record<string, SpecialType> | undefined
 }
 
 export interface RoomRecord {

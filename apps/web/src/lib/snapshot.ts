@@ -18,6 +18,7 @@ import type {
   PriceResultEntry,
   RevealGif,
   RoomSummary,
+  SpecialType,
 } from '../data/types'
 
 export interface RawBoardRow {
@@ -44,6 +45,7 @@ export interface RawActiveClue {
   boardValue: number
   prompt: string
   timerSeconds: number
+  special?: SpecialType
   mediaUrl?: string
   revealMediaUrl?: string
   revealGif?: RevealGif
@@ -178,6 +180,7 @@ export function cluesFromSnapshot(snapshot: Pick<RawSnapshot, 'board' | 'usedClu
         used,
         prompt: active?.prompt ?? '',
         timerSeconds: active?.timerSeconds ?? 30,
+        special: active?.special,
         mediaUrl: active?.mediaUrl,
         revealMediaUrl: active?.revealMediaUrl,
         revealGif: active?.revealGif,
@@ -267,14 +270,17 @@ export function priceResultsFromSnapshot(snapshot: RawSnapshot): PriceResultEntr
   if (snapshot.activeClue?.type !== 'price_slider' || !snapshot.results) return undefined
   const nicknames = new Map(snapshot.players.map((player) => [player.playerId, player.nickname]))
   return snapshot.results
-    .map((result) => ({
-      playerId: result.playerId,
-      nickname: nicknames.get(result.playerId) ?? 'Player',
-      guess: Number(JSON.parse(result.answer) as unknown),
-      pointsAwarded: result.pointsAwarded,
-      rank: result.rank,
-      overbid: result.rank === null,
-    }))
+    .map((result) => {
+      const answer = JSON.parse(result.answer) as unknown
+      return {
+        playerId: result.playerId,
+        nickname: nicknames.get(result.playerId) ?? 'Player',
+        guess: answer === null ? Number.NaN : Number(answer),
+        pointsAwarded: result.pointsAwarded,
+        rank: result.rank,
+        overbid: result.rank === null,
+      }
+    })
     .filter((result) => Number.isFinite(result.guess))
     .sort(
       (left, right) =>

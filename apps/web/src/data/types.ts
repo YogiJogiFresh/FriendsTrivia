@@ -9,6 +9,22 @@
  */
 
 export type ClueType = 'music-multiple-choice' | 'music-free-text' | 'price-slider'
+export type SpecialType = 'double_points' | 'double_or_nothing' | 'speed_round'
+
+export const SPECIAL_DETAILS: Record<SpecialType, { name: string; description: string }> = {
+  double_points: {
+    name: 'Double Points',
+    description: 'Every positive award is doubled.',
+  },
+  double_or_nothing: {
+    name: 'Double or Nothing',
+    description: 'Win double, or lose the clue value for an incorrect or missing answer.',
+  },
+  speed_round: {
+    name: 'Speed Round',
+    description: 'The answer timer is cut in half.',
+  },
+}
 
 export interface ClueOption {
   id: string
@@ -31,6 +47,7 @@ interface BaseClue {
   used: boolean
   prompt: string
   timerSeconds: number
+  special?: SpecialType
   /** Present on the active clue when it has an attached song. */
   mediaUrl?: string
   /** Optional second clip played once when the answer is revealed. */

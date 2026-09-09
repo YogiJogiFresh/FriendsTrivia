@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useHostRoom } from '../data/hooks'
 import { useCountdown } from '../data/hooks/useCountdown'
+import { SPECIAL_DETAILS } from '../data/types'
 import { ApiError } from '../lib/apiClient'
 import { clearHostToken } from '../lib/roomStorage'
 import {
@@ -178,6 +179,12 @@ export function HostRoomPage() {
                 </Badge>
                 <Badge tone="warning">${currentClue.value}</Badge>
               </span>
+              {currentClue.special ? (
+                <div className={styles.specialBanner}>
+                  <Badge tone="warning">{SPECIAL_DETAILS[currentClue.special].name}</Badge>
+                  <span>{SPECIAL_DETAILS[currentClue.special].description}</span>
+                </div>
+              ) : null}
               <p>{currentClue.prompt}</p>
               {phase !== 'CLUE_READY' ? (
                 <GameTimer
@@ -198,6 +205,12 @@ export function HostRoomPage() {
           {phase === 'REVEAL' && currentClue ? (
             <Card className={styles.cluePanel}>
               <h2>Answer revealed</h2>
+              {currentClue.special ? (
+                <div className={styles.specialBanner}>
+                  <Badge tone="warning">{SPECIAL_DETAILS[currentClue.special].name}</Badge>
+                  <span>{SPECIAL_DETAILS[currentClue.special].description}</span>
+                </div>
+              ) : null}
               <p>{currentClue.prompt}</p>
               {currentClue.revealedAnswer ? <p>{currentClue.revealedAnswer}</p> : null}
               {currentClue.revealGif ? (

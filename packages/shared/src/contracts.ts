@@ -127,6 +127,13 @@ export const GameSettingsSchema = z
     priceScoring: PriceScoringSettingsSchema.default({}),
     board: BoardSettingsSchema.default({}),
     teams: TeamNamesSchema.default([]),
+    specials: z
+      .array(z.enum(['double_points', 'double_or_nothing', 'speed_round']))
+      .max(3)
+      .refine((specials) => new Set(specials).size === specials.length, {
+        message: 'Specials must be unique',
+      })
+      .default([]),
   })
   .strict()
 export type GameSettings = z.infer<typeof GameSettingsSchema>
@@ -550,6 +557,7 @@ const activeClueCommonShape = {
   timerSeconds: z.number().int().min(5).max(300),
   openedAtMs: EpochMillisecondsSchema.nullable(),
   deadlineMs: EpochMillisecondsSchema.nullable(),
+  special: z.enum(['double_points', 'double_or_nothing', 'speed_round']).optional(),
   revealGif: z
     .object({
       provider: z.enum(['giphy', 'tenor', 'url']),

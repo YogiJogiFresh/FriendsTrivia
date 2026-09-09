@@ -1,6 +1,6 @@
 {
   "name": "@friends-trivia/desktop",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "private": true,
   "description": "FriendsTrivia desktop host application",
   "author": "YogiJogiFresh",

@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 
 import type { GameEngine } from '../game/engine.js'
-import type { GameSettings } from '../game/types.js'
+import type { GameSettings, SpecialType } from '../game/types.js'
 import type { RoomRepository } from '../repositories/rooms.js'
 
 const defaultSettings: GameSettings = {
@@ -10,7 +10,14 @@ const defaultSettings: GameSettings = {
   priceRankPercentages: [1, 0.75, 0.5, 0.25],
   uniqueNicknames: true,
   teams: [],
+  specials: [],
 }
+
+const supportedSpecials = new Set<SpecialType>([
+  'double_points',
+  'double_or_nothing',
+  'speed_round',
+])
 
 export async function registerRoomRoutes(
   app: FastifyInstance,
@@ -56,6 +63,13 @@ export async function registerRoomRoutes(
       return reply.code(400).send({ error: 'Use either no teams or 2-8 uniquely named teams' })
     }
     settings.teams = settings.teams.map((team) => team.trim())
+    if (
+      !Array.isArray(settings.specials) ||
+      settings.specials.some((special) => !supportedSpecials.has(special)) ||
+      new Set(settings.specials).size !== settings.specials.length
+    ) {
+      return reply.code(400).send({ error: 'Choose each supported special at most once' })
+    }
 
     try {
       const created = rooms.create(body.packId, settings, codeLength)

@@ -59,6 +59,7 @@ export interface ServerPackSummary {
   status: 'draft' | 'ready' | 'archived'
   categoryCount: number
   clueCount: number
+  ordinaryClueCount: number
   createdAt: string
   updatedAt: string
 }
@@ -247,7 +248,10 @@ export interface RoomSettingsInput {
   priceRankPercentages?: number[]
   uniqueNicknames?: boolean
   teams?: string[]
+  specials?: SpecialType[]
 }
+
+export type SpecialType = 'double_points' | 'double_or_nothing' | 'speed_round'
 
 export function createRoom(packId: string, settings?: RoomSettingsInput): Promise<CreateRoomResponse> {
   return request('/api/rooms', json('POST', { packId, settings }))

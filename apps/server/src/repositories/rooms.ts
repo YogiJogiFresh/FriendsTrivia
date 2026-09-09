@@ -53,7 +53,7 @@ function mapRoom(row: RoomRow): RoomRecord {
     status: row.status,
     settings: (() => {
       const settings = JSON.parse(row.settings_json) as GameSettings
-      return { ...settings, teams: settings.teams ?? [] }
+      return { ...settings, teams: settings.teams ?? [], specials: settings.specials ?? [] }
     })(),
     state: JSON.parse(row.state_json) as RoomState,
     stateVersion: row.state_version,
@@ -88,21 +88,29 @@ export class RoomRepository {
   ): { room: RoomRecord; hostToken: string } {
     const pack = this.database
       .prepare(
-        `SELECT p.id, p.status, COUNT(q.id) AS clue_count
+        `SELECT p.id, p.status, COUNT(q.id) AS clue_count,
+                SUM(CASE WHEN q.is_final = 0 THEN 1 ELSE 0 END) AS ordinary_clue_count
          FROM packs p
          LEFT JOIN categories c ON c.pack_id = p.id AND c.archived = 0
          LEFT JOIN clues q ON q.category_id = c.id AND q.archived = 0
          WHERE p.id = ? AND p.status != 'archived'
          GROUP BY p.id`,
       )
-      .get(packId) as { id: string; status: string; clue_count: number } | undefined
+      .get(packId) as
+        | { id: string; status: string; clue_count: number; ordinary_clue_count: number }
+        | undefined
     if (!pack) throw new Error('Pack not found')
     if (pack.status !== 'ready' || pack.clue_count === 0) {
       throw new Error('Pack must be marked ready and contain at least one clue')
     }
+    if ((settings.specials?.length ?? 0) > pack.ordinary_clue_count) {
+      throw new Error(
+        `This pack needs at least ${settings.specials?.length ?? 0} ordinary clues for the selected specials`,
+      )
+    }
 
     const hostToken = createToken()
-    const initialState: RoomState = { phase: 'LOBBY', usedClueIds: [] }
+    const initialState: RoomState = { phase: 'LOBBY', usedClueIds: [], specialAssignments: {} }
 
     for (let attempt = 0; attempt < 20; attempt += 1) {
       const id = createId()

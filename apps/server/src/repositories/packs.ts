@@ -10,6 +10,7 @@ export interface PackSummary {
   status: 'draft' | 'ready' | 'archived'
   categoryCount: number
   clueCount: number
+  ordinaryClueCount: number
   createdAt: string
   updatedAt: string
 }
@@ -53,7 +54,8 @@ export class PackRepository {
       .prepare(
         `SELECT p.id, p.title, p.description, p.status, p.created_at AS createdAt,
                 p.updated_at AS updatedAt, COUNT(DISTINCT c.id) AS categoryCount,
-                COUNT(q.id) AS clueCount
+                COUNT(q.id) AS clueCount,
+                SUM(CASE WHEN q.is_final = 0 THEN 1 ELSE 0 END) AS ordinaryClueCount
          FROM packs p
          LEFT JOIN categories c ON c.pack_id = p.id AND c.archived = 0
          LEFT JOIN clues q ON q.category_id = c.id AND q.archived = 0

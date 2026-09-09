@@ -3,8 +3,10 @@ import type { FormEvent } from 'react'
 import { useLocation, useParams } from 'react-router-dom'
 import { usePlayerRoom } from '../data/hooks'
 import { useCountdown } from '../data/hooks/useCountdown'
+import { SPECIAL_DETAILS } from '../data/types'
 import {
   AnswerPanel,
+  Badge,
   Button,
   ConnectionStatusPill,
   GameTimer,
@@ -257,6 +259,12 @@ export function PlayPage() {
 
         {(game.room.phase === 'ACCEPTING_ANSWERS' || game.room.phase === 'FINAL_QUESTION') && currentClue ? (
           <>
+            {currentClue.special ? (
+              <div className={styles.specialBanner}>
+                <Badge tone="warning">{SPECIAL_DETAILS[currentClue.special].name}</Badge>
+                <span>{SPECIAL_DETAILS[currentClue.special].description}</span>
+              </div>
+            ) : null}
             <div className={styles.timerRow}>
               <span className={styles.clueValue}>
                 {game.room.finalRound ? 'Final Question' : `$${currentClue.value}`}
@@ -280,6 +288,12 @@ export function PlayPage() {
         {game.room.phase === 'ANSWERS_CLOSED' ? (
           <div className={styles.centeredState}>
             <h1>Answers locked</h1>
+            {currentClue?.special ? (
+              <div className={styles.specialBanner}>
+                <Badge tone="warning">{SPECIAL_DETAILS[currentClue.special].name}</Badge>
+                <span>{SPECIAL_DETAILS[currentClue.special].description}</span>
+              </div>
+            ) : null}
             <p>Look at the shared screen for the reveal.</p>
           </div>
         ) : null}
@@ -287,6 +301,12 @@ export function PlayPage() {
         {game.room.phase === 'REVEAL' ? (
           <div className={styles.centeredState}>
             <h1>Answer revealed</h1>
+            {currentClue?.special ? (
+              <div className={styles.specialBanner}>
+                <Badge tone="warning">{SPECIAL_DETAILS[currentClue.special].name}</Badge>
+                <span>{SPECIAL_DETAILS[currentClue.special].description}</span>
+              </div>
+            ) : null}
             {currentClue?.revealedAnswer ? <p className={styles.revealedAnswer}>{currentClue.revealedAnswer}</p> : null}
             {currentClue?.revealGif ? (
               <img className={styles.revealGif} src={currentClue.revealGif.url} alt={currentClue.revealGif.alt} />

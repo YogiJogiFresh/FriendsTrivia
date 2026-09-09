@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events'
+import { randomInt } from 'node:crypto'
 
 import {
   matchFreeTextAnswer,
@@ -10,7 +11,7 @@ import type Database from 'better-sqlite3'
 import { createId } from '../ids.js'
 import { isRevealGif } from '../gifs.js'
 import type { RoomRepository } from '../repositories/rooms.js'
-import type { GamePhase, RoomRecord, RoomState } from './types.js'
+import type { GamePhase, RoomRecord, RoomState, SpecialType } from './types.js'
 
 interface ClueRow {
   id: string
@@ -125,7 +126,8 @@ export class GameEngine extends EventEmitter {
             type: visibleClue.type,
             boardValue: visibleClue.board_value,
             prompt: visibleClue.prompt,
-            timerSeconds: visibleClue.timer_seconds,
+            timerSeconds: this.effectiveTimerSeconds(room, visibleClue),
+            special: room.state.specialAssignments?.[visibleClue.id],
             mediaUrl: visibleClue.media_asset_id ? `/api/media/${visibleClue.media_asset_id}/stream` : undefined,
             revealMediaUrl: visibleClue.reveal_media_asset_id
               ? `/api/media/${visibleClue.reveal_media_asset_id}/stream`
@@ -197,7 +199,33 @@ export class GameEngine extends EventEmitter {
 
   startGame(room: RoomRecord): RoomRecord {
     if (this.rooms.listPlayers(room.id).length === 0) throw new Error('At least one player is required')
-    return this.transition(room, 'BOARD', { startedAt: new Date().toISOString() }, 'active')
+    const specials = room.settings.specials ?? []
+    const clueIds = (
+      this.database
+        .prepare(
+          `SELECT q.id
+           FROM clues q
+           JOIN categories c ON c.id = q.category_id
+           WHERE c.pack_id = ? AND c.archived = 0 AND q.archived = 0 AND q.is_final = 0`,
+        )
+        .all(room.packId) as Array<{ id: string }>
+    ).map(({ id }) => id)
+    if (clueIds.length < specials.length) {
+      throw new Error(`This pack needs at least ${specials.length} ordinary clues for the selected specials`)
+    }
+    for (let index = clueIds.length - 1; index > 0; index -= 1) {
+      const swapIndex = randomInt(index + 1)
+      ;[clueIds[index], clueIds[swapIndex]] = [clueIds[swapIndex]!, clueIds[index]!]
+    }
+    const specialAssignments = Object.fromEntries(
+      specials.map((special, index) => [clueIds[index]!, special]),
+    ) as Record<string, SpecialType>
+    return this.transition(
+      room,
+      'BOARD',
+      { startedAt: new Date().toISOString(), specialAssignments },
+      'active',
+    )
   }
 
   selectClue(room: RoomRecord, clueId: string): RoomRecord {
@@ -280,7 +308,7 @@ export class GameEngine extends EventEmitter {
     }
     const clue = this.getClue(room.state.activeClueId)
     if (!clue) throw new Error('Final clue not found')
-    const timerSeconds = clue.timer_seconds || room.settings.timerSeconds
+    const timerSeconds = this.effectiveTimerSeconds(room, clue)
     const updated = this.transition(
       room,
       'FINAL_QUESTION',
@@ -297,7 +325,7 @@ export class GameEngine extends EventEmitter {
   openAnswers(room: RoomRecord): RoomRecord {
     const clue = room.state.activeClueId ? this.getClue(room.state.activeClueId) : undefined
     if (!clue) throw new Error('No clue is selected')
-    const timerSeconds = clue.timer_seconds || room.settings.timerSeconds
+    const timerSeconds = this.effectiveTimerSeconds(room, clue)
     const roomAfter = this.transition(
       room,
       'ACCEPTING_ANSWERS',
@@ -430,7 +458,7 @@ export class GameEngine extends EventEmitter {
     if (!clue) throw new Error('Clue not found')
     this.clearTimer(room.id)
     this.clearClueAttempts(room, false)
-    const timerSeconds = clue.timer_seconds || room.settings.timerSeconds
+    const timerSeconds = this.effectiveTimerSeconds(room, clue)
     const phase = room.state.finalRound ? 'FINAL_QUESTION' : 'ACCEPTING_ANSWERS'
     const updated = this.rooms.saveState(
       room.id,
@@ -475,10 +503,10 @@ export class GameEngine extends EventEmitter {
       this.database
         .prepare(
           `UPDATE submissions SET points_awarded = 0,
-           evaluation_json = json_object('voided', 1)
+           evaluation_json = json_object('voided', 1, 'special', ?)
            WHERE room_id = ? AND clue_id = ?`,
         )
-        .run(room.id, room.state.activeClueId)
+        .run(this.activeSpecial(room) ?? null, room.id, room.state.activeClueId)
     })()
     if (room.state.finalRound) {
       const usedClueIds = [...new Set([...room.state.usedClueIds, room.state.activeClueId])]
@@ -549,7 +577,7 @@ export class GameEngine extends EventEmitter {
       return this.requireRoom(room.id)
     }
     const clue = room.state.activeClueId ? this.getClue(room.state.activeClueId) : undefined
-    const durationMs = (clue?.timer_seconds ?? room.settings.timerSeconds) * 1000
+    const durationMs = clue ? this.effectiveTimerSeconds(room, clue) * 1000 : room.settings.timerSeconds * 1000
     const elapsedBeforePause =
       (target === 'ACCEPTING_ANSWERS' || target === 'FINAL_QUESTION') &&
       remainingMs !== undefined
@@ -807,7 +835,8 @@ export class GameEngine extends EventEmitter {
       ? config.acceptedAnswers.filter((answer): answer is string => typeof answer === 'string')
       : []
     if (typeof config.correctAnswer === 'string') accepted.push(config.correctAnswer)
-    const maxDurationMs = clue.timer_seconds * 1000
+    const maxDurationMs = this.effectiveTimerSeconds(room, clue) * 1000
+    const special = this.activeSpecial(room)
 
     for (const submission of submissions) {
       const answer = JSON.parse(submission.answer_json) as unknown
@@ -830,14 +859,25 @@ export class GameEngine extends EventEmitter {
           ? { ...scoreInput, matchedAcceptedAnswer: match.matchedAcceptedAnswer }
           : scoreInput,
       )
-      const points = score.totalPoints
+      const points = this.applySpecialPoints(special, score.totalPoints, clue.board_value)
       this.updateSubmission(submission.id, score.correct, undefined, points, {
         ...score,
+        special,
+        pointsBeforeSpecial: score.totalPoints,
       })
-      if (points > 0) {
-        this.addScore(room.id, submission.player_id, clue.id, points, 'music', 'Correct answer', 'system')
+      if (points !== 0) {
+        this.addScore(
+          room.id,
+          submission.player_id,
+          clue.id,
+          points,
+          'music',
+          this.specialScoreReason(special, score.correct),
+          'system',
+        )
       }
     }
+    this.applyMissingDoubleOrNothingPenalties(room, clue, submissions, 'music')
   }
 
   private evaluatePrice(
@@ -863,28 +903,115 @@ export class GameEngine extends EventEmitter {
         tieTolerance: 0,
       },
     })
+    const special = this.activeSpecial(room)
 
     for (const submission of submissions) {
       const result = scored.results.find((entry) => entry.playerId === submission.player_id)
       if (!result) throw new Error('Price score result is missing')
+      const points = this.applySpecialPoints(special, result.points, clue.board_value)
       this.updateSubmission(
         submission.id,
-        result.guess === target,
+        special === 'double_or_nothing' ? result.points > 0 : result.guess === target,
         result.rank ?? undefined,
-        result.points,
-        result,
+        points,
+        { ...result, special, pointsBeforeSpecial: result.points },
       )
-      if (result.points > 0) {
+      if (points !== 0) {
         this.addScore(
           room.id,
           submission.player_id,
           clue.id,
-          result.points,
+          points,
           'price',
-          `Price rank ${result.rank}`,
+          this.specialScoreReason(special, result.points > 0, `Price rank ${result.rank}`),
           'system',
         )
       }
+    }
+    this.applyMissingDoubleOrNothingPenalties(room, clue, submissions, 'price')
+  }
+
+  private activeSpecial(room: RoomRecord): SpecialType | undefined {
+    return room.state.activeClueId
+      ? room.state.specialAssignments?.[room.state.activeClueId]
+      : undefined
+  }
+
+  private effectiveTimerSeconds(room: RoomRecord, clue: ClueRow): number {
+    const timerSeconds = clue.timer_seconds || room.settings.timerSeconds
+    return room.state.specialAssignments?.[clue.id] === 'speed_round'
+      ? Math.max(5, Math.ceil(timerSeconds / 2))
+      : timerSeconds
+  }
+
+  private applySpecialPoints(
+    special: SpecialType | undefined,
+    normalPoints: number,
+    boardValue: number,
+  ): number {
+    if (special === 'double_points') return normalPoints > 0 ? normalPoints * 2 : 0
+    if (special === 'double_or_nothing') return normalPoints > 0 ? normalPoints * 2 : -boardValue
+    return normalPoints
+  }
+
+  private specialScoreReason(
+    special: SpecialType | undefined,
+    won: boolean,
+    normalReason = 'Correct answer',
+  ): string {
+    if (special === 'double_points') return `Double Points: ${normalReason}`
+    if (special === 'double_or_nothing') {
+      return won ? `Double or Nothing won: ${normalReason}` : 'Double or Nothing lost'
+    }
+    return normalReason
+  }
+
+  private applyMissingDoubleOrNothingPenalties(
+    room: RoomRecord,
+    clue: ClueRow,
+    submissions: SubmissionRow[],
+    source: 'music' | 'price',
+  ): void {
+    if (this.activeSpecial(room) !== 'double_or_nothing') return
+    const submittedPlayerIds = new Set(submissions.map(({ player_id }) => player_id))
+    for (const player of this.rooms.listPlayers(room.id)) {
+      if (submittedPlayerIds.has(player.id)) continue
+      const evaluation = {
+        special: 'double_or_nothing',
+        answered: false,
+        pointsBeforeSpecial: 0,
+        points: -clue.board_value,
+      }
+      this.database
+        .prepare(
+          `INSERT INTO submissions
+           (id, room_id, player_id, clue_id, answer_json, elapsed_ms, correct,
+            points_awarded, evaluation_json, clue_prompt, clue_type, category_title)
+           VALUES (?, ?, ?, ?, 'null', ?, 0, ?, ?, ?, ?, (
+             SELECT title FROM categories WHERE id = ?
+           ))`,
+        )
+        .run(
+          createId(),
+          room.id,
+          player.id,
+          clue.id,
+          this.effectiveTimerSeconds(room, clue) * 1000,
+          -clue.board_value,
+          JSON.stringify(evaluation),
+          clue.prompt,
+          clue.type,
+          clue.category_id,
+        )
+      this.addScore(
+        room.id,
+        player.id,
+        clue.id,
+        -clue.board_value,
+        source,
+        'Double or Nothing lost: no answer',
+        'system',
+      )
     }
   }
 

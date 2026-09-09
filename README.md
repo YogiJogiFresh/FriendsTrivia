@@ -69,13 +69,19 @@ the release must include all three artifacts for automatic updates to work.
 
 1. Connect the host computer and player phones to the same Wi-Fi network.
 2. Open the printed LAN URL on the host computer.
-3. Use **Host a Game** to create or import a pack, arrange categories and clues, and select a pack. Optionally enter 2-8 team names before creating the room.
+3. Use **Host a Game** to create or import a pack, arrange categories and clues, and select a pack. Optionally enter 2-8 team names and enable clue specials before creating the room.
 4. Open the shared display on the TV/projector and confirm that its audio test plays through the room speakers.
 5. Players scan the QR code or open the LAN URL, enter the four-character room code, and choose a team when teams are enabled.
 6. Start the game, select clues from the host control, and use the reveal/leaderboard controls between clues.
 
 In team games, every player's score contributes to their team total. Leaderboards rank teams and
 show each member's individual contribution beneath the team.
+
+Enabled clue specials are randomly assigned once when the game starts and remain hidden until their
+clue is selected. **Double Points** doubles positive awards, **Double or Nothing** doubles positive
+awards but deducts the clue value for incorrect or missing answers, and **Speed Round** halves the
+answer timer. Each enabled special appears on one different ordinary clue; Final Question is never
+eligible.
 
 The host computer's firewall must allow inbound TCP traffic on port `3000`. Some guest Wi-Fi networks isolate devices from one another; use a normal private network or personal hotspot if phones cannot reach the printed LAN URL.
 

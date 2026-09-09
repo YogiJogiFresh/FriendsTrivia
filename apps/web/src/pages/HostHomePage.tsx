@@ -8,6 +8,7 @@ import {
   endHostedRoom,
   getHostedRoom,
   type HostedRoomSummary,
+  type SpecialType,
 } from '../lib/apiClient'
 import { clearHostToken, listHostSessions, saveHostToken } from '../lib/roomStorage'
 import styles from './HostHomePage.module.css'
@@ -27,6 +28,7 @@ export function HostHomePage() {
   const [liveRoomsError, setLiveRoomsError] = useState<string | null>(null)
   const [endingRoomCode, setEndingRoomCode] = useState<string | null>(null)
   const [teamsText, setTeamsText] = useState('')
+  const [specials, setSpecials] = useState<SpecialType[]>([])
 
   const selectedPack = packs?.find((pack) => pack.id === selectedPackId) ?? null
   const visiblePacks = packs?.filter((pack) => pack.status !== 'archived') ?? []
@@ -39,7 +41,21 @@ export function HostHomePage() {
     teams.length <= 8 &&
     new Set(teams.map((team) => team.toLocaleLowerCase())).size === teams.length &&
     teams.every((team) => team.length <= 30)
-  const canLaunch = Boolean(selectedPack) && selectedPack?.status === 'ready' && !launching && teamsValid
+  const enoughCluesForSpecials = (selectedPack?.ordinaryClueCount ?? 0) >= specials.length
+  const canLaunch =
+    Boolean(selectedPack) &&
+    selectedPack?.status === 'ready' &&
+    !launching &&
+    teamsValid &&
+    enoughCluesForSpecials
+
+  function toggleSpecial(special: SpecialType) {
+    setSpecials((current) =>
+      current.includes(special)
+        ? current.filter((candidate) => candidate !== special)
+        : [...current, special],
+    )
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -85,7 +101,7 @@ export function HostHomePage() {
     setLaunching(true)
     setLaunchError(null)
     try {
-      const room = await createRoom(selectedPack.id, { teams })
+      const room = await createRoom(selectedPack.id, { teams, specials })
       saveHostToken(room.roomCode, room.hostToken)
       navigate(`/host/room/${room.roomCode}`)
     } catch (err) {
@@ -195,6 +211,39 @@ export function HostHomePage() {
           hint="Enter one team per line. Use either no teams or 2-8 unique teams."
           error={teamsValid ? undefined : 'Use 2-8 unique names, each no longer than 30 characters.'}
         />
+      </Card>
+
+      <Card className={styles.specialSetup}>
+        <h2>Clue specials (optional)</h2>
+        <p>Each enabled special is hidden on one random clue and revealed when that clue starts.</p>
+        <div className={styles.specialOptions}>
+          {([
+            ['double_points', 'Double Points', 'Every positive award is doubled.'],
+            [
+              'double_or_nothing',
+              'Double or Nothing',
+              'Win double, or lose the clue value for an incorrect or missing answer.',
+            ],
+            ['speed_round', 'Speed Round', 'The answer timer is cut in half.'],
+          ] as const).map(([id, name, description]) => (
+            <label key={id} className={styles.specialOption}>
+              <input
+                type="checkbox"
+                checked={specials.includes(id)}
+                onChange={() => toggleSpecial(id)}
+              />
+              <span>
+                <strong>{name}</strong>
+                <small>{description}</small>
+              </span>
+            </label>
+          ))}
+        </div>
+        {!enoughCluesForSpecials && selectedPack ? (
+          <p role="alert" className={styles.specialError}>
+            Select fewer specials or use a pack with at least {specials.length} ordinary clues.
+          </p>
+        ) : null}
       </Card>
 
       <div className={styles.launchBar}>

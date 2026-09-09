@@ -4,6 +4,7 @@ import { openDatabase } from '../database.js'
 import { PackRepository } from '../repositories/packs.js'
 import { RoomRepository } from '../repositories/rooms.js'
 import { GameEngine } from './engine.js'
+import type { SpecialType } from './types.js'
 
 const databases: ReturnType<typeof openDatabase>[] = []
 
@@ -11,7 +12,7 @@ afterEach(() => {
   databases.splice(0).forEach((database) => database.close())
 })
 
-function createGame() {
+function createGame(specials: SpecialType[] = []) {
   const database = openDatabase(':memory:')
   databases.push(database)
   const packs = new PackRepository(database)
@@ -72,6 +73,7 @@ function createGame() {
       speedBonusMax: 100,
       priceRankPercentages: [1, 0.5],
       uniqueNicknames: true,
+      specials,
     },
     4,
   )
@@ -92,6 +94,141 @@ function createGame() {
 }
 
 describe('game engine', () => {
+  it('assigns each enabled special once to a distinct ordinary clue', () => {
+    const game = createGame(['double_points', 'speed_round'])
+    const room = game.engine.startGame(game.room)
+
+    expect(Object.keys(room.state.specialAssignments ?? {})).toHaveLength(2)
+    expect(new Set(Object.values(room.state.specialAssignments ?? {}))).toEqual(
+      new Set(['double_points', 'speed_round']),
+    )
+    expect(Object.keys(room.state.specialAssignments ?? {})).toEqual(
+      expect.arrayContaining(game.clueIds),
+    )
+    expect(game.engine.publicSnapshot(room).activeClue).toBeUndefined()
+  })
+
+  it('rejects more specials than eligible ordinary clues', () => {
+    expect(() =>
+      createGame(['double_points', 'double_or_nothing', 'speed_round']),
+    ).toThrow('at least 3 ordinary clues')
+  })
+
+  it('never assigns a special to the Final Question', () => {
+    const game = createGame(['double_points'])
+    game.database
+      .prepare('UPDATE clues SET is_final = 1 WHERE id = ?')
+      .run(game.clueIds[0])
+
+    const room = game.engine.startGame(game.room)
+
+    expect(room.state.specialAssignments).toEqual({
+      [game.clueIds[1] ?? '']: 'double_points',
+    })
+  })
+
+  it('doubles positive music points without penalizing incorrect answers', () => {
+    const game = createGame()
+    let room = game.engine.startGame(game.room)
+    room = game.rooms.saveState(
+      room.id,
+      {
+        ...room.state,
+        specialAssignments: { [game.clueIds[0] ?? '']: 'double_points' },
+      },
+      room.status,
+      room.stateVersion,
+    )
+    room = game.engine.selectClue(room, game.clueIds[0] ?? '')
+
+    expect(game.engine.publicSnapshot(room).activeClue).toMatchObject({
+      special: 'double_points',
+    })
+    game.engine.submitAnswer(room, game.playerOne.id, 'Dancing Queen')
+    game.engine.submitAnswer(room, game.playerTwo.id, 'Wrong')
+    room = game.engine.closeAnswers(room)
+
+    const scores = game.rooms.scores(room.id)
+    expect(scores.find(({ playerId }) => playerId === game.playerOne.id)?.score).toBeGreaterThan(200)
+    expect(scores.find(({ playerId }) => playerId === game.playerOne.id)?.score).toBeLessThanOrEqual(400)
+    expect(scores.find(({ playerId }) => playerId === game.playerTwo.id)?.score).toBe(0)
+  })
+
+  it('applies Double or Nothing wins and missing-answer penalties', () => {
+    const game = createGame()
+    let room = game.engine.startGame(game.room)
+    room = game.rooms.saveState(
+      room.id,
+      {
+        ...room.state,
+        specialAssignments: { [game.clueIds[1] ?? '']: 'double_or_nothing' },
+      },
+      room.status,
+      room.stateVersion,
+    )
+    room = game.engine.selectClue(room, game.clueIds[1] ?? '')
+    game.engine.submitAnswer(room, game.playerOne.id, 90)
+    room = game.engine.closeAnswers(room)
+
+    expect(game.rooms.scores(room.id)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ playerId: game.playerOne.id, score: 720 }),
+        expect.objectContaining({ playerId: game.playerTwo.id, score: -400 }),
+      ]),
+    )
+    room = game.engine.reveal(room)
+    expect(game.engine.publicSnapshot(room).results).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ playerId: game.playerOne.id, correct: 1 }),
+        expect.objectContaining({ playerId: game.playerTwo.id, pointsAwarded: -400 }),
+      ]),
+    )
+  })
+
+  it('halves a Speed Round timer and preserves it through reset and Go Back', () => {
+    const game = createGame()
+    let room = game.engine.startGame(game.room)
+    room = game.rooms.saveState(
+      room.id,
+      {
+        ...room.state,
+        specialAssignments: { [game.clueIds[0] ?? '']: 'speed_round' },
+      },
+      room.status,
+      room.stateVersion,
+    )
+    room = game.engine.selectClue(room, game.clueIds[0] ?? '')
+    expect(game.engine.publicSnapshot(room).activeClue?.timerSeconds).toBe(15)
+    expect(Date.parse(room.state.deadline ?? '') - Date.parse(room.state.startedAt ?? '')).toBe(15_000)
+
+    room = game.engine.resetClue(room)
+    expect(Date.parse(room.state.deadline ?? '') - Date.parse(room.state.startedAt ?? '')).toBe(15_000)
+    room = game.engine.goBack(room)
+    expect(room.state.specialAssignments?.[game.clueIds[0] ?? '']).toBe('speed_round')
+  })
+
+  it('keeps assigned specials attached while reversing special scores on Go Back', () => {
+    const game = createGame()
+    let room = game.engine.startGame(game.room)
+    room = game.rooms.saveState(
+      room.id,
+      {
+        ...room.state,
+        specialAssignments: { [game.clueIds[0] ?? '']: 'double_or_nothing' },
+      },
+      room.status,
+      room.stateVersion,
+    )
+    room = game.engine.selectClue(room, game.clueIds[0] ?? '')
+    game.engine.submitAnswer(room, game.playerOne.id, 'Wrong')
+    room = game.engine.closeAnswers(room)
+    expect(game.rooms.scores(room.id).every(({ score }) => score === -200)).toBe(true)
+
+    room = game.engine.goBack(room)
+    expect(game.rooms.scores(room.id).every(({ score }) => score === 0)).toBe(true)
+    expect(room.state.specialAssignments?.[game.clueIds[0] ?? '']).toBe('double_or_nothing')
+  })
+
   it('publishes a LAN-safe player join URL', () => {
     const game = createGame()
     expect(game.engine.publicSnapshot(game.room).joinUrl).toBe(

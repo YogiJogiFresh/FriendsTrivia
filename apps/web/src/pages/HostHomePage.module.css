@@ -77,6 +77,56 @@
   margin-bottom: var(--space-4);
 }
 
+.specialSetup {
+  display: grid;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.specialSetup h2,
+.specialSetup p {
+  margin: 0;
+}
+
+.specialSetup > p {
+  color: var(--color-text-muted);
+}
+
+.specialOptions {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.specialOption {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.specialOption input {
+  width: 1.25rem;
+  height: 1.25rem;
+  accent-color: var(--color-amber);
+}
+
+.specialOption span,
+.specialOption small {
+  display: block;
+}
+
+.specialOption small {
+  margin-top: var(--space-1);
+  color: var(--color-text-muted);
+}
+
+.specialError {
+  color: var(--color-danger) !important;
+}
+
 .launchInfo {
   flex: 1 1 240px;
   color: var(--color-text-muted);
