@@ -1,0 +1,7 @@
+/*
+ * Entry stylesheet: pulls in design tokens first, then the global reset/base
+ * styles that consume those tokens. Component styles are colocated as CSS
+ * Modules next to each component and are imported by the components directly.
+ */
+@import './styles/tokens.css';
+@import './styles/global.css';

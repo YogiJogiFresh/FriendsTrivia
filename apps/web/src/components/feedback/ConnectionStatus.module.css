@@ -1,0 +1,83 @@
+.banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  border-radius: var(--radius-md);
+  font-weight: var(--font-weight-medium);
+}
+
+.banner.reconnecting {
+  background: rgba(255, 176, 32, 0.16);
+  color: var(--color-amber-strong);
+  border: 1px solid rgba(255, 176, 32, 0.4);
+}
+
+.banner.offline {
+  background: rgba(255, 107, 107, 0.16);
+  color: var(--color-danger-strong);
+  border: 1px solid rgba(255, 107, 107, 0.4);
+}
+
+.banner.connecting {
+  background: rgba(77, 163, 255, 0.16);
+  color: var(--color-blue);
+  border: 1px solid rgba(77, 163, 255, 0.4);
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  animation: spin 800ms linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+    /* Keep a static ring so the state still reads visually without motion. */
+    border-top-color: currentColor;
+    opacity: 0.6;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dot.connected {
+  background: var(--color-success);
+}
+.dot.connecting {
+  background: var(--color-blue);
+}
+.dot.reconnecting {
+  background: var(--color-amber);
+}
+.dot.offline {
+  background: var(--color-danger);
+}

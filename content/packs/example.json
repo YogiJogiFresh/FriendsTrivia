@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "id": "00000000-0000-4000-8000-000000000001",
+  "title": "Example Pack",
+  "description": "A starter pack showing the manifest shape for all three clue types.",
+  "status": "draft",
+  "defaultSettings": {},
+  "createdAt": "2024-01-01 00:00:00",
+  "updatedAt": "2024-01-01 00:00:00",
+  "categories": [
+    {
+      "id": "00000000-0000-4000-8000-000000000010",
+      "title": "80s Rock",
+      "position": 0,
+      "clues": [
+        {
+          "id": "00000000-0000-4000-8000-000000000100",
+          "type": "music_multiple_choice",
+          "boardValue": 100,
+          "position": 0,
+          "prompt": "Name this song",
+          "timerSeconds": 30,
+          "mediaAssetId": null,
+          "config": {
+            "choices": ["Livin' on a Prayer", "Sweet Child O' Mine", "Every Rose Has Its Thorn", "Africa"],
+            "correctAnswer": "Sweet Child O' Mine"
+          }
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000101",
+          "type": "music_free_text",
+          "boardValue": 200,
+          "position": 1,
+          "prompt": "Name the artist",
+          "timerSeconds": 30,
+          "mediaAssetId": null,
+          "config": {
+            "correctAnswer": "Bon Jovi",
+            "acceptedAnswers": ["Jon Bon Jovi"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000011",
+      "title": "Price Is Right",
+      "position": 1,
+      "clues": [
+        {
+          "id": "00000000-0000-4000-8000-000000000102",
+          "type": "price_slider",
+          "boardValue": 300,
+          "position": 0,
+          "prompt": "Guess the price of a new gaming console",
+          "timerSeconds": 30,
+          "mediaAssetId": null,
+          "config": {
+            "min": 0,
+            "max": 1000,
+            "step": 5,
+            "correctPrice": 499,
+            "prefix": "$"
+          }
+        }
+      ]
+    }
+  ]
+}

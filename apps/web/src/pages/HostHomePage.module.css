@@ -1,0 +1,145 @@
+.grid {
+  display: grid;
+  gap: var(--space-4);
+  margin-block: var(--space-5);
+}
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.intro {
+  color: var(--color-text-muted);
+  max-width: 60ch;
+}
+
+.packCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  padding: var(--space-5);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  transition: border-color var(--duration-fast) var(--ease-standard);
+}
+
+.packCard:hover {
+  border-color: var(--color-border-strong);
+}
+
+.packCardSelected {
+  border-color: var(--color-amber);
+  box-shadow: var(--shadow-glow-amber);
+}
+
+.packHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.packTitle {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+}
+
+.packDescription {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.packMeta {
+  display: flex;
+  gap: var(--space-4);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-faint);
+}
+
+.launchBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-5);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+}
+
+.teamSetup {
+  margin-bottom: var(--space-4);
+}
+
+.launchInfo {
+  flex: 1 1 240px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.inlineLink {
+  color: var(--color-amber);
+  font-weight: var(--font-weight-bold);
+  text-decoration: underline;
+}
+
+.liveSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-block: var(--space-5);
+}
+
+.sectionHeader p {
+  margin: var(--space-1) 0 0;
+  color: var(--color-text-muted);
+}
+
+.liveGrid {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.liveCard,
+.liveActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.liveCard {
+  justify-content: space-between;
+}
+
+.liveRoomCode,
+.liveMeta {
+  display: block;
+}
+
+.liveRoomCode {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+}
+
+.liveMeta {
+  margin-top: var(--space-1);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+@media (max-width: 560px) {
+  .liveCard {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .liveActions > * {
+    flex: 1;
+  }
+}

@@ -1,0 +1,185 @@
+.shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100svh;
+  background: var(--color-bg);
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bottom);
+}
+
+.topBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.brand {
+  font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-lg);
+  color: var(--color-text-muted);
+}
+
+.topBarRight {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.headerRoomCode {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.headerRoomCode strong {
+  margin-left: var(--space-2);
+  color: var(--color-amber);
+  font-size: var(--font-size-xl);
+  letter-spacing: 0.16em;
+}
+
+.main {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-6);
+  padding: var(--space-6);
+  text-align: center;
+}
+
+.boardMain {
+  justify-content: center;
+  width: 100%;
+  max-width: var(--display-max-width);
+  margin-inline: auto;
+}
+
+.categoryLabel {
+  font-size: var(--font-size-lg);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.clueValue {
+  font-size: var(--font-size-display);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-amber);
+}
+
+.cluePrompt {
+  max-width: 60ch;
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-snug);
+}
+
+.answerProgress {
+  color: var(--color-text-muted);
+}
+
+.revealedAnswer {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-success);
+}
+
+.revealGif {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: center;
+  margin: 0;
+}
+
+.revealGif img {
+  display: block;
+  max-width: min(70vw, 42rem);
+  max-height: 42vh;
+  border-radius: var(--radius-lg);
+  object-fit: contain;
+}
+
+.revealGif figcaption,
+.revealGif a {
+  color: var(--color-text-faint);
+  font-size: var(--font-size-xs);
+}
+
+.priceResults {
+  width: min(100%, 42rem);
+  padding: var(--space-5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  text-align: left;
+}
+
+.priceResults h2 {
+  margin: 0 0 var(--space-4);
+  text-align: center;
+}
+
+.priceResults ol {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.priceResults li,
+.priceResults li > span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.priceResults li {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  font-size: var(--font-size-lg);
+}
+
+.priceResults li > span {
+  flex: 1;
+}
+
+.priceResults li > strong {
+  color: var(--color-success);
+}
+
+.overbid {
+  color: var(--color-danger);
+}
+
+.pausedOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 14, 26, 0.85);
+}
+
+.pausedCard {
+  padding: var(--space-6) var(--space-8);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-raised);
+  border: 2px solid var(--color-amber);
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+}
+
+.bannerWrapper {
+  padding: var(--space-4) var(--space-6) 0;
+}

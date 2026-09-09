@@ -1,0 +1,89 @@
+.boardWrapper {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+  border-radius: var(--radius-lg);
+}
+
+.board {
+  display: grid;
+  grid-template-columns: repeat(var(--column-count, 6), minmax(140px, 1fr));
+  grid-auto-rows: minmax(64px, auto);
+  gap: var(--space-2);
+  min-width: max-content;
+  padding: var(--space-1);
+}
+
+.categoryHeader {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 72px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  border-bottom: 4px solid var(--accent-color, var(--color-amber));
+  color: var(--color-text);
+  font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-md);
+  line-height: var(--line-height-snug);
+  scroll-snap-align: start;
+}
+
+.clueTile {
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--accent-color, var(--color-amber));
+  font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-xl);
+  font-family: var(--font-mono);
+  transition:
+    transform var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard);
+}
+
+button.clueTile {
+  cursor: pointer;
+}
+
+button.clueTile:hover:not(:disabled) {
+  border-color: var(--accent-color, var(--color-amber));
+  transform: translateY(-2px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button.clueTile:hover:not(:disabled) {
+    transform: none;
+  }
+}
+
+.clueTile:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.clueTileActive {
+  border-color: var(--accent-color, var(--color-amber));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-color, var(--color-amber)) 45%, transparent);
+}
+
+@media (max-width: 767px) {
+  .board {
+    grid-template-columns: repeat(var(--column-count, 6), minmax(112px, 1fr));
+  }
+
+  .categoryHeader,
+  .clueTile {
+    font-size: var(--font-size-md);
+    min-height: 56px;
+  }
+}

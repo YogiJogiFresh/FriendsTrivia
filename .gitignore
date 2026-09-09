@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.env
+*.db
+*.db-shm
+*.db-wal
+coverage/
+playwright-report/
+test-results/
+apps/desktop/release/
+content/songs/*
+!content/songs/.gitkeep
+!content/songs/README.md

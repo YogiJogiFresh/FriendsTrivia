@@ -1,0 +1,12 @@
+.container {
+  width: 100%;
+  max-width: var(--content-max-width);
+  margin-inline: auto;
+  padding-left: calc(var(--space-5) + var(--safe-left));
+  padding-right: calc(var(--space-5) + var(--safe-right));
+  box-sizing: border-box;
+}
+
+.wide {
+  max-width: var(--display-max-width);
+}

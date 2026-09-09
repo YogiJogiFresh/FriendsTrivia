@@ -1,0 +1,70 @@
+.timer {
+  --ring-size: 96px;
+  --ring-stroke: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  width: var(--ring-size);
+  height: var(--ring-size);
+}
+
+.timer.display {
+  --ring-size: 180px;
+  --ring-stroke: 12px;
+}
+
+.timer.compact {
+  --ring-size: 56px;
+  --ring-stroke: 6px;
+}
+
+.ring {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.track {
+  fill: none;
+  stroke: var(--color-border);
+}
+
+.progress {
+  fill: none;
+  stroke: var(--color-teal);
+  stroke-linecap: round;
+  transition: stroke-dashoffset var(--duration-base) linear, stroke var(--duration-base) var(--ease-standard);
+}
+
+.progress.low {
+  stroke: var(--color-danger);
+}
+
+.value {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-weight: var(--font-weight-bold);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text);
+}
+
+.timer.display .value {
+  font-size: var(--font-size-timer);
+}
+
+.timer.compact .value {
+  font-size: var(--font-size-md);
+}
+
+.paused .ring {
+  opacity: 0.45;
+}
+
+.paused .value {
+  color: var(--color-text-faint);
+}

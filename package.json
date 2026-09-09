@@ -1,0 +1,30 @@
+{
+  "name": "friends-trivia",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/server",
+    "apps/web",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @friends-trivia/shared && npm run build -w @friends-trivia/web && npm run build -w @friends-trivia/server",
+    "desktop:install": "npm --prefix apps/desktop ci --workspaces=false",
+    "desktop:build": "npm run desktop:install && npm run build && npm --prefix apps/desktop run build",
+    "desktop:dev": "concurrently -k -n app,desktop -c cyan,green \"npm run dev\" \"wait-on http://localhost:5173/api/health && npm --prefix apps/desktop run dev\"",
+    "desktop:release": "pwsh -ExecutionPolicy Bypass -File scripts/release.ps1",
+    "dev": "concurrently -k -n shared,server,web -c yellow,cyan,magenta \"npm run dev -w @friends-trivia/shared\" \"npm run dev -w @friends-trivia/server\" \"npm run dev -w @friends-trivia/web\"",
+    "lint": "npm run lint --workspaces --if-present",
+    "start": "npm run start -w @friends-trivia/server",
+    "test": "npm run build -w @friends-trivia/shared && npm run test -w @friends-trivia/shared && npm run test -w @friends-trivia/server",
+    "typecheck": "npm run build -w @friends-trivia/shared && npm run typecheck -w @friends-trivia/server && npm run typecheck -w @friends-trivia/web && npm --prefix apps/desktop run typecheck"
+  },
+  "engines": {
+    "node": ">=20.18.0"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "typescript": "^5.7.3",
+    "wait-on": "^9.0.5"
+  }
+}

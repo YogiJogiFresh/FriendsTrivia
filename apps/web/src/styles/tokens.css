@@ -1,0 +1,155 @@
+/*
+ * FriendsTrivia design tokens.
+ * Original visual language: a "game-night" high-energy but accessible theme —
+ * deep navy surfaces with amber/teal/magenta accents. All color pairs below
+ * are chosen/checked to meet WCAG AA contrast against their intended background.
+ *
+ * Breakpoints used throughout the app (kept here as documentation; CSS media
+ * queries cannot read custom properties):
+ *   --bp-sm: 480px  (large phone / landscape phone)
+ *   --bp-md: 768px  (tablet)
+ *   --bp-lg: 1024px (small laptop / shared display minimum)
+ *   --bp-xl: 1440px (large shared display)
+ */
+
+:root {
+  color-scheme: dark;
+
+  /* ---- Surfaces & text ---- */
+  --color-bg: #0a0e1a;
+  --color-bg-raised: #121933;
+  --color-surface: #161f3f;
+  --color-surface-raised: #1e2a52;
+  --color-surface-overlay: #24316199;
+  --color-border: #33407a;
+  --color-border-strong: #4a5aa6;
+
+  --color-text: #f5f7ff;
+  --color-text-muted: #b7c0e6;
+  --color-text-faint: #8890bd;
+  --color-text-on-accent: #0a0e1a;
+
+  /* ---- Brand accents ---- */
+  --color-amber: #ffb020;
+  --color-amber-strong: #ffc861;
+  --color-teal: #2fd8c9;
+  --color-teal-strong: #7bead0;
+  --color-magenta: #ff4f9a;
+  --color-magenta-strong: #ff86ba;
+  --color-violet: #9b7bff;
+  --color-blue: #4da3ff;
+  --color-lime: #b7e34d;
+
+  --color-success: #3ddc84;
+  --color-success-strong: #8af0b3;
+  --color-danger: #ff6b6b;
+  --color-danger-strong: #ffb3b3;
+  --color-warning: var(--color-amber);
+  --color-info: var(--color-blue);
+
+  --color-focus-ring: #ffe066;
+
+  /* Rotating category accents for the Jeopardy-style board */
+  --category-accent-1: var(--color-amber);
+  --category-accent-2: var(--color-teal);
+  --category-accent-3: var(--color-magenta);
+  --category-accent-4: var(--color-violet);
+  --category-accent-5: var(--color-blue);
+  --category-accent-6: var(--color-lime);
+
+  /* ---- Typography ---- */
+  --font-sans:
+    'Segoe UI', system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;
+  --font-display: var(--font-sans);
+  --font-mono: ui-monospace, 'Cascadia Code', Consolas, monospace;
+
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.875rem;
+  --font-size-md: 1rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.375rem;
+  --font-size-2xl: 1.75rem;
+  --font-size-3xl: 2.25rem;
+  --font-size-4xl: 3rem;
+  --font-size-hero: clamp(2.5rem, 5vw + 1rem, 4.5rem);
+  --font-size-display: clamp(2rem, 4vw + 1rem, 3.5rem);
+  --font-size-timer: clamp(2.5rem, 8vw, 6rem);
+  --font-size-roomcode: clamp(2rem, 6vw, 4rem);
+
+  --line-height-tight: 1.15;
+  --line-height-snug: 1.35;
+  --line-height-normal: 1.55;
+
+  --font-weight-regular: 400;
+  --font-weight-medium: 600;
+  --font-weight-bold: 800;
+
+  /* ---- Spacing (4px scale) ---- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 2.5rem;
+  --space-8: 3rem;
+  --space-9: 4rem;
+
+  /* Minimum comfortable touch target (WCAG 2.5.8 / Apple & Material HIG) */
+  --touch-target-min: 44px;
+  --touch-target-comfortable: 56px;
+
+  /* ---- Shape ---- */
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-pill: 999px;
+
+  /* ---- Elevation ---- */
+  --shadow-sm: 0 1px 2px rgba(2, 4, 12, 0.4);
+  --shadow-md: 0 6px 20px rgba(2, 4, 12, 0.45);
+  --shadow-lg: 0 16px 40px rgba(2, 4, 12, 0.55);
+  --shadow-glow-amber: 0 0 0 3px rgba(255, 176, 32, 0.35);
+  --shadow-glow-teal: 0 0 0 3px rgba(47, 216, 201, 0.35);
+  --shadow-glow-magenta: 0 0 0 3px rgba(255, 79, 154, 0.35);
+
+  /* ---- Motion ---- */
+  --duration-fast: 120ms;
+  --duration-base: 220ms;
+  --duration-slow: 420ms;
+  --duration-celebrate: 900ms;
+  --ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* ---- Layout ---- */
+  --content-max-width: 1200px;
+  --display-max-width: 1600px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+
+  --z-header: 10;
+  --z-banner: 20;
+  --z-overlay: 30;
+}
+
+/* Respect reduced-motion preference globally: collapse all durations so
+   transform/opacity based transitions become effectively instant. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0.01ms;
+    --duration-base: 0.01ms;
+    --duration-slow: 0.01ms;
+    --duration-celebrate: 0.01ms;
+  }
+}
+
+/* High-contrast preference: widen borders and strengthen text tokens. */
+@media (prefers-contrast: more) {
+  :root {
+    --color-border: #7683d1;
+    --color-text-muted: #d6dbf7;
+    --color-focus-ring: #fff2b0;
+  }
+}

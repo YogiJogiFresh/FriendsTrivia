@@ -1,0 +1,43 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  text-align: center;
+}
+
+.qrFrame {
+  padding: var(--space-4);
+  background: #ffffff;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  line-height: 0;
+}
+
+.joinUrl {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.roomCode {
+  font-family: var(--font-mono);
+  font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-roomcode);
+  letter-spacing: 0.25em;
+  color: var(--color-amber);
+}
+
+.roomCodeLabel {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.lockRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}

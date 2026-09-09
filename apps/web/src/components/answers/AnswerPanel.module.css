@@ -1,0 +1,86 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.prompt {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-snug);
+}
+
+.actions {
+  position: sticky;
+  bottom: 0;
+  padding-top: var(--space-3);
+  padding-bottom: calc(var(--space-3) + var(--safe-bottom));
+  background: linear-gradient(to top, var(--color-bg) 60%, transparent);
+}
+
+.confirmSummary {
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  border: 2px dashed var(--color-border-strong);
+  background: var(--color-surface);
+  text-align: center;
+}
+
+.confirmLabel {
+  display: block;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-2);
+}
+
+.confirmValue {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+}
+
+.confirmButtons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+.submitError {
+  color: var(--color-danger, #e5484d);
+  font-size: var(--font-size-sm);
+  text-align: center;
+  margin: calc(var(--space-3) * -1) 0 0;
+}
+
+.submittedState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-6) var(--space-4);
+  text-align: center;
+  border-radius: var(--radius-lg);
+  background: rgba(61, 220, 132, 0.1);
+  border: 2px solid rgba(61, 220, 132, 0.4);
+}
+
+.submittedIcon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-success);
+  color: var(--color-text-on-accent);
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+}
+
+.submittedTitle {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+}
+
+.submittedHint {
+  color: var(--color-text-muted);
+}

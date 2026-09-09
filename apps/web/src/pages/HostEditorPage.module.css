@@ -1,0 +1,320 @@
+.layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) 1fr;
+  gap: var(--space-5);
+  align-items: start;
+}
+
+@media (max-width: 768px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.categoryList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.categoryButton {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: var(--touch-target-comfortable);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  text-align: left;
+}
+
+.categoryButtonActive {
+  border-color: var(--color-teal);
+  background: var(--color-surface-raised);
+}
+
+.clueList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.panelHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.headerActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.errorText {
+  color: var(--color-danger-strong, var(--color-danger));
+  font-size: var(--font-size-sm);
+}
+
+.hiddenInput {
+  display: none;
+}
+
+/* Pack list view */
+
+.packGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--space-4);
+  margin-block: var(--space-5);
+}
+
+.emptyState {
+  margin-block: var(--space-5);
+  text-align: center;
+}
+
+.packCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  padding: var(--space-5);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+}
+
+.packCard:hover {
+  border-color: var(--color-border-strong);
+}
+
+.packCardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.packTitle {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+}
+
+.packDescription {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.packMeta {
+  display: flex;
+  gap: var(--space-4);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-faint);
+}
+
+.creatorRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.creatorCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  width: 100%;
+  max-width: 480px;
+}
+
+.creatorActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
+/* Pack detail / editor view */
+
+.metaCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.statusRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.statusLabel {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-muted);
+}
+
+.statusSelect {
+  min-height: var(--touch-target-comfortable);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.statusHint {
+  flex-basis: 100%;
+  color: var(--color-text-faint);
+  font-size: var(--font-size-xs);
+}
+
+.categoryButtonLabel {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.removeButton {
+  flex: 0 0 auto;
+  min-width: 32px;
+  min-height: 32px;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+}
+
+.removeButton:hover {
+  color: var(--color-danger-strong, var(--color-danger));
+}
+
+.categoryTitleField {
+  flex: 1 1 320px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.narrowField {
+  flex: 0 0 120px;
+}
+
+.clueCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.finalQuestionToggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-amber);
+  font-weight: var(--font-weight-bold);
+}
+
+.clueHeaderRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--space-3);
+}
+
+.choiceRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.choiceInput {
+  flex: 1 1 auto;
+  min-height: var(--touch-target-comfortable);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-raised);
+  color: var(--color-text);
+}
+
+.priceGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--space-3);
+}
+
+.audioPreview {
+  width: 100%;
+  margin-top: var(--space-2);
+}
+
+.clueTypeBadgeRow {
+  display: flex;
+}
+
+.mediaCard {
+  margin-top: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.mediaList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.mediaRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.mediaName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mediaMeta {
+  flex: 0 0 auto;
+  color: var(--color-text-faint);
+  font-size: var(--font-size-xs);
+}
+
+.mediaDirectory {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
+}
+
+.mediaDirectory code {
+  color: var(--color-text);
+}
+
+.mediaActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}

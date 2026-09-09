@@ -1,0 +1,28 @@
+.bar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+}
+
+.row,
+.rightActions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.rightActions {
+  margin-left: auto;
+}
+
+@media (max-width: 680px) {
+  .rightActions {
+    width: 100%;
+    margin-left: 0;
+    justify-content: flex-end;
+  }
+}

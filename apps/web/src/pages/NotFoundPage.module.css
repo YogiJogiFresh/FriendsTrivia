@@ -1,0 +1,25 @@
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  text-align: center;
+  padding-block: var(--space-9);
+}
+
+.homeLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--touch-target-comfortable);
+  padding: var(--space-3) var(--space-5);
+  border-radius: var(--radius-md);
+  background: var(--color-amber);
+  color: var(--color-text-on-accent);
+  font-weight: var(--font-weight-bold);
+  text-decoration: none;
+}
+
+.homeLink:hover {
+  background: var(--color-amber-strong);
+}
