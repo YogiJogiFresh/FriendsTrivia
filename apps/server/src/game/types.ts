@@ -2,6 +2,7 @@ export type GamePhase =
   | 'LOBBY'
   | 'BOARD'
   | 'CLUE_READY'
+  | 'SPECIAL_VOTE'
   | 'ACCEPTING_ANSWERS'
   | 'ANSWERS_CLOSED'
   | 'REVEAL'
@@ -11,7 +12,11 @@ export type GamePhase =
   | 'FINISHED'
   | 'PAUSED'
 
-export type SpecialType = 'double_points' | 'double_or_nothing' | 'speed_round'
+export type SpecialType =
+  | 'double_points'
+  | 'double_or_nothing'
+  | 'speed_round'
+  | 'forced_player'
 
 export interface GameSettings {
   timerSeconds: number
@@ -33,6 +38,8 @@ export interface RoomState {
   revealedAt?: string | undefined
   finalRound?: boolean | undefined
   specialAssignments?: Record<string, SpecialType> | undefined
+  specialVotes?: Record<string, string> | undefined
+  forcedPlayerId?: string | undefined
 }
 
 export interface RoomRecord {

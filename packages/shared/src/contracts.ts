@@ -128,8 +128,8 @@ export const GameSettingsSchema = z
     board: BoardSettingsSchema.default({}),
     teams: TeamNamesSchema.default([]),
     specials: z
-      .array(z.enum(['double_points', 'double_or_nothing', 'speed_round']))
-      .max(3)
+      .array(z.enum(['double_points', 'double_or_nothing', 'speed_round', 'forced_player']))
+      .max(4)
       .refine((specials) => new Set(specials).size === specials.length, {
         message: 'Specials must be unique',
       })
@@ -502,6 +502,7 @@ export const GamePhaseSchema = z.enum([
   'LOBBY',
   'BOARD',
   'CLUE_READY',
+  'SPECIAL_VOTE',
   'ACCEPTING_ANSWERS',
   'ANSWERS_CLOSED',
   'REVEAL',
@@ -557,7 +558,9 @@ const activeClueCommonShape = {
   timerSeconds: z.number().int().min(5).max(300),
   openedAtMs: EpochMillisecondsSchema.nullable(),
   deadlineMs: EpochMillisecondsSchema.nullable(),
-  special: z.enum(['double_points', 'double_or_nothing', 'speed_round']).optional(),
+  special: z
+    .enum(['double_points', 'double_or_nothing', 'speed_round', 'forced_player'])
+    .optional(),
   revealGif: z
     .object({
       provider: z.enum(['giphy', 'tenor', 'url']),
@@ -631,6 +634,8 @@ export const RoomPublicSnapshotSchema = z
     players: z.array(PlayerPublicSnapshotSchema).max(50),
     board: z.array(BoardCategorySnapshotSchema).max(12),
     activeClue: ActivePublicClueSchema.nullable(),
+    specialVotedPlayerIds: z.array(EntityIdSchema).max(50).default([]),
+    forcedPlayerId: EntityIdSchema.optional(),
     leaderboard: z.array(LeaderboardEntrySchema).max(50),
   })
   .strict()

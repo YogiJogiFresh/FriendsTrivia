@@ -65,6 +65,13 @@
   font-weight: var(--font-weight-bold);
 }
 
+.forcedPlayer {
+  margin: 0;
+  color: var(--color-amber-strong);
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+}
+
 .sidebar {
   display: flex;
   flex-direction: column;

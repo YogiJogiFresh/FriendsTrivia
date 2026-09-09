@@ -181,8 +181,9 @@ export function importPackBundle(file: File): Promise<ServerPackDetail> {
   return request('/api/packs/import-bundle', { method: 'POST', body: formData })
 }
 
-export function packBundleExportUrl(id: string): string {
-  return `/api/packs/${encodeURIComponent(id)}/export-bundle`
+export function packBundleExportUrl(id: string, optimized = false): string {
+  const suffix = optimized ? '?optimized=true' : ''
+  return `/api/packs/${encodeURIComponent(id)}/export-bundle${suffix}`
 }
 
 // ---- GIF search ----------------------------------------------------------
@@ -251,7 +252,11 @@ export interface RoomSettingsInput {
   specials?: SpecialType[]
 }
 
-export type SpecialType = 'double_points' | 'double_or_nothing' | 'speed_round'
+export type SpecialType =
+  | 'double_points'
+  | 'double_or_nothing'
+  | 'speed_round'
+  | 'forced_player'
 
 export function createRoom(packId: string, settings?: RoomSettingsInput): Promise<CreateRoomResponse> {
   return request('/api/rooms', json('POST', { packId, settings }))

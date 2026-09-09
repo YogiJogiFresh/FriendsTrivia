@@ -23,11 +23,11 @@
 
 .actions {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-5);
   width: 100%;
-  max-width: 720px;
-  margin-top: var(--space-6);
+  max-width: 360px;
+  margin: var(--space-6) auto 0;
   align-items: stretch;
 }
 
@@ -62,11 +62,6 @@
   flex-shrink: 0;
 }
 
-.joinIcon {
-  background: rgba(47, 216, 201, 0.18);
-  color: var(--color-teal-strong);
-}
-
 .hostIcon {
   background: rgba(255, 176, 32, 0.18);
   color: var(--color-amber-strong);
@@ -76,10 +71,4 @@
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
   flex: 1 1 auto;
-}
-
-.form {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
 }

@@ -5,6 +5,8 @@ describe('game phase transitions', () => {
   it('allows the normal clue lifecycle and explicit skip paths', () => {
     expect(isGamePhaseTransitionAllowed('LOBBY', 'BOARD')).toBe(true)
     expect(isGamePhaseTransitionAllowed('BOARD', 'CLUE_READY')).toBe(true)
+    expect(isGamePhaseTransitionAllowed('CLUE_READY', 'SPECIAL_VOTE')).toBe(true)
+    expect(isGamePhaseTransitionAllowed('SPECIAL_VOTE', 'ACCEPTING_ANSWERS')).toBe(true)
     expect(isGamePhaseTransitionAllowed('CLUE_READY', 'ACCEPTING_ANSWERS')).toBe(true)
     expect(isGamePhaseTransitionAllowed('ACCEPTING_ANSWERS', 'ANSWERS_CLOSED')).toBe(true)
     expect(isGamePhaseTransitionAllowed('ANSWERS_CLOSED', 'REVEAL')).toBe(true)

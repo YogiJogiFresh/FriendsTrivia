@@ -24,20 +24,26 @@ export function GameTimer({
   const clampedTotal = Math.max(totalSeconds, 1)
   const clampedRemaining = Math.min(Math.max(secondsRemaining, 0), clampedTotal)
   const ratio = clampedRemaining / clampedTotal
-  const isLow = clampedRemaining <= Math.min(5, clampedTotal * 0.2)
+  const urgency = ratio <= 0.2 ? 'danger' : ratio <= 0.5 ? 'warning' : 'safe'
 
   const radius = 42
   const circumference = 2 * Math.PI * radius
   const dashOffset = circumference * (1 - ratio)
 
-  const classes = [styles.timer, styles[size], paused ? styles.paused : ''].filter(Boolean).join(' ')
+  const classes = [
+    styles.timer,
+    styles[size],
+    paused ? styles.paused : styles[urgency],
+  ]
+    .filter(Boolean)
+    .join(' ')
 
   return (
     <div className={classes} role="timer" aria-label={`${label}: ${clampedRemaining} seconds${paused ? ', paused' : ''}`}>
       <svg className={styles.ring} viewBox="0 0 100 100" aria-hidden="true">
         <circle className={styles.track} cx="50" cy="50" r={radius} strokeWidth="8" />
         <circle
-          className={[styles.progress, isLow && !paused ? styles.low : ''].filter(Boolean).join(' ')}
+          className={styles.progress}
           cx="50"
           cy="50"
           r={radius}

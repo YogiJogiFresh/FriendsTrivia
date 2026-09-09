@@ -166,6 +166,7 @@ export function HostEditorPage() {
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [deletingPack, setDeletingPack] = useState(false)
+  const [optimizedExport, setOptimizedExport] = useState(false)
 
   const [media, setMedia] = useState<ServerMediaAsset[] | null>(null)
   const [mediaError, setMediaError] = useState<string | null>(null)
@@ -574,7 +575,22 @@ export function HostEditorPage() {
             </span>
           ) : null}
           {saveSuccess ? <Badge tone="success">Saved</Badge> : null}
-          <Button variant="secondary" href={packBundleExportUrl(pack.id)} download>
+          <label
+            className={styles.exportOption}
+            title="Compresses the bundle and stores byte-identical songs only once. Original audio quality is preserved."
+          >
+            <input
+              type="checkbox"
+              checked={optimizedExport}
+              onChange={(event) => setOptimizedExport(event.target.checked)}
+            />
+            Optimized export <span aria-hidden="true">ⓘ</span>
+          </label>
+          <Button
+            variant="secondary"
+            href={packBundleExportUrl(pack.id, optimizedExport)}
+            download
+          >
             Export pack + songs
           </Button>
           <Button variant="danger" onClick={handleDeletePack} disabled={deletingPack}>

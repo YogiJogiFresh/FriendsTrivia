@@ -80,8 +80,10 @@ show each member's individual contribution beneath the team.
 Enabled clue specials are randomly assigned once when the game starts and remain hidden until their
 clue is selected. **Double Points** doubles positive awards, **Double or Nothing** doubles positive
 awards but deducts the clue value for incorrect or missing answers, and **Speed Round** halves the
-answer timer. Each enabled special appears on one different ordinary clue; Final Question is never
-eligible.
+answer timer. **Forced Player** lets everyone nominate another player as the sole answerer; that
+player earns the full clue value for a correct answer, while every other player earns it if the
+answer is wrong or missing. Each enabled special appears on one different ordinary clue; Final
+Question is never eligible.
 
 The host computer's firewall must allow inbound TCP traffic on port `3000`. Some guest Wi-Fi networks isolate devices from one another; use a normal private network or personal hotspot if phones cannot reach the printed LAN URL.
 

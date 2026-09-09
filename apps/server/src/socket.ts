@@ -126,6 +126,21 @@ export function registerSocketServer(
     )
 
     socket.on(
+      'player:special-vote',
+      (payload: { playerId?: string; expectedStateVersion?: number }, ack: Ack) => {
+        handle(ack, () => {
+          enforceInterval('player:special-vote', 250)
+          const room = requireSocketRoom()
+          if (socket.data.role !== 'player' || typeof socket.data.playerId !== 'string') {
+            throw new Error('Player authorization required')
+          }
+          if (!payload.playerId) throw new Error('Choose a player')
+          return engine.submitSpecialVote(room, socket.data.playerId, payload.playerId)
+        })
+      },
+    )
+
+    socket.on(
       'host:command',
       (
         payload: {
@@ -156,6 +171,8 @@ export function registerSocketServer(
               return engine.hostSnapshot(engine.selectClue(room, payload.clueId))
             case 'openAnswers':
               return engine.hostSnapshot(engine.openAnswers(room))
+            case 'resolveSpecialVote':
+              return engine.hostSnapshot(engine.resolveSpecialVote(room))
             case 'closeAnswers':
               return engine.hostSnapshot(engine.closeAnswers(room))
             case 'reveal':
@@ -205,6 +222,12 @@ export function registerSocketServer(
                 throw new Error('Player not found')
               }
               io.to(`room:${room.id}`).emit('player:kicked', { playerId: payload.playerId })
+              if (
+                room.state.phase === 'SPECIAL_VOTE' &&
+                rooms.listPlayers(room.id).length === 1
+              ) {
+                engine.resolveSpecialVote(room)
+              }
               sendSnapshots(room.id)
               return
             case 'adjustScore':

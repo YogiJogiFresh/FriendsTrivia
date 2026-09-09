@@ -162,6 +162,13 @@
   text-align: center;
 }
 
+.voteGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  width: 100%;
+}
+
 .clueValue {
   color: var(--color-amber);
   font-size: var(--font-size-xl);

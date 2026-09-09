@@ -45,6 +45,9 @@ export function PlayPage() {
     joinError,
     submitAnswer,
     submitWager,
+    submitSpecialVote,
+    submitting,
+    submitError,
   } = usePlayerRoom(roomCode)
 
   const [nicknameDraft, setNicknameDraft] = useState(initialNickname)
@@ -71,6 +74,12 @@ export function PlayPage() {
   const ownScore = game?.players.find((player) => player.id === playerId)?.score ?? 0
   const maxWager = Math.max(0, ownScore)
   const wagerLocked = Boolean(playerId && game?.wageredPlayerIds.includes(playerId))
+  const specialVoteLocked = Boolean(
+    playerId && game?.room.specialVotedPlayerIds.includes(playerId),
+  )
+  const forcedPlayer = game?.players.find(
+    ({ id }) => id === game.room.forcedPlayerId,
+  )
 
   if (fatalError) {
     return (
@@ -257,6 +266,40 @@ export function PlayPage() {
           </div>
         ) : null}
 
+        {game.room.phase === 'SPECIAL_VOTE' ? (
+          <div className={styles.centeredState}>
+            <div className={styles.specialBanner}>
+              <Badge tone="warning">Forced Player</Badge>
+              <span>Choose one other player to answer this clue.</span>
+            </div>
+            {specialVoteLocked ? (
+              <p className={styles.correct}>Vote locked. Waiting for the other players.</p>
+            ) : game.players.length === 1 ? (
+              <p>You are the only remaining player. The host will start the question for you.</p>
+            ) : (
+              <div className={styles.voteGrid}>
+                {game.players
+                  .filter(({ id }) => id !== playerId)
+                  .map((player) => (
+                    <Button
+                      key={player.id}
+                      variant="secondary"
+                      size="lg"
+                      disabled={submitting}
+                      onClick={() => void submitSpecialVote(player.id).catch(() => undefined)}
+                    >
+                      {player.nickname}
+                    </Button>
+                  ))}
+              </div>
+            )}
+            {submitError ? <p role="alert">{submitError}</p> : null}
+            <p>
+              {game.room.specialVotedPlayerIds.length}/{game.players.length} votes received
+            </p>
+          </div>
+        ) : null}
+
         {(game.room.phase === 'ACCEPTING_ANSWERS' || game.room.phase === 'FINAL_QUESTION') && currentClue ? (
           <>
             {currentClue.special ? (
@@ -276,12 +319,19 @@ export function PlayPage() {
                 paused={isPaused}
               />
             </div>
-            <AnswerPanel
-              key={`${currentClue.id}:${game.room.deadline ?? ''}`}
-              clue={currentClue}
-              disabled={connection !== 'connected' || isPaused}
-              onSubmit={handleAnswerSubmit}
-            />
+            {currentClue.special !== 'forced_player' || game.room.forcedPlayerId === playerId ? (
+              <AnswerPanel
+                key={`${currentClue.id}:${game.room.deadline ?? ''}`}
+                clue={currentClue}
+                disabled={connection !== 'connected' || isPaused}
+                onSubmit={handleAnswerSubmit}
+              />
+            ) : (
+              <div className={styles.centeredState}>
+                <h1>{forcedPlayer?.nickname ?? 'The selected player'} is answering</h1>
+                <p>If they miss, everyone else receives ${currentClue.value}.</p>
+              </div>
+            )}
           </>
         ) : null}
 
@@ -313,7 +363,11 @@ export function PlayPage() {
             ) : null}
             {game.ownResult ? (
               <p className={game.ownResult.correct ? styles.correct : styles.incorrect}>
-                {game.ownResult.correct ? 'Correct!' : 'Not quite.'}{' '}
+                {game.ownResult.awardedBecauseForcedPlayerMissed
+                  ? 'The forced player missed!'
+                  : game.ownResult.correct
+                    ? 'Correct!'
+                    : 'Not quite.'}{' '}
                 {game.ownResult.pointsAwarded !== 0
                   ? `${game.ownResult.pointsAwarded > 0 ? '+' : ''}${game.ownResult.pointsAwarded} points`
                   : null}

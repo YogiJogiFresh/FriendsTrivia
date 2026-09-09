@@ -86,6 +86,13 @@
   font-weight: var(--font-weight-bold);
 }
 
+.forcedPlayer {
+  margin: 0;
+  color: var(--color-amber-strong);
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+}
+
 .cluePrompt {
   max-width: 60ch;
   font-size: var(--font-size-2xl);

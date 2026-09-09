@@ -41,7 +41,8 @@ interface FinalWagerRow {
 const allowedTransitions: Record<GamePhase, readonly GamePhase[]> = {
   LOBBY: ['BOARD'],
   BOARD: ['CLUE_READY', 'FINAL_WAGER', 'FINISHED', 'PAUSED'],
-  CLUE_READY: ['ACCEPTING_ANSWERS', 'BOARD', 'PAUSED'],
+  CLUE_READY: ['SPECIAL_VOTE', 'ACCEPTING_ANSWERS', 'BOARD', 'PAUSED'],
+  SPECIAL_VOTE: ['ACCEPTING_ANSWERS', 'BOARD', 'PAUSED'],
   ACCEPTING_ANSWERS: ['ANSWERS_CLOSED', 'BOARD', 'PAUSED'],
   ANSWERS_CLOSED: ['REVEAL', 'BOARD', 'FINISHED', 'PAUSED'],
   REVEAL: ['LEADERBOARD', 'PAUSED'],
@@ -52,6 +53,7 @@ const allowedTransitions: Record<GamePhase, readonly GamePhase[]> = {
   PAUSED: [
     'ACCEPTING_ANSWERS',
     'CLUE_READY',
+    'SPECIAL_VOTE',
     'ANSWERS_CLOSED',
     'REVEAL',
     'LEADERBOARD',
@@ -108,6 +110,8 @@ export class GameEngine extends EventEmitter {
         ? undefined
         : clue
     const revealed = ['REVEAL', 'LEADERBOARD', 'FINISHED'].includes(room.state.phase)
+    const votingHidden =
+      this.activeSpecial(room) === 'forced_player' && !room.state.forcedPlayerId
     const clueConfig = clue
       ? (JSON.parse(clue.config_json) as Record<string, unknown>)
       : undefined
@@ -125,11 +129,17 @@ export class GameEngine extends EventEmitter {
             categoryId: visibleClue.category_id,
             type: visibleClue.type,
             boardValue: visibleClue.board_value,
-            prompt: visibleClue.prompt,
+            prompt:
+              votingHidden
+                ? 'Vote for the player who must answer this clue.'
+                : visibleClue.prompt,
             timerSeconds: this.effectiveTimerSeconds(room, visibleClue),
             special: room.state.specialAssignments?.[visibleClue.id],
-            mediaUrl: visibleClue.media_asset_id ? `/api/media/${visibleClue.media_asset_id}/stream` : undefined,
-            revealMediaUrl: visibleClue.reveal_media_asset_id
+            mediaUrl:
+              !votingHidden && visibleClue.media_asset_id
+                ? `/api/media/${visibleClue.media_asset_id}/stream`
+                : undefined,
+            revealMediaUrl: !votingHidden && visibleClue.reveal_media_asset_id
               ? `/api/media/${visibleClue.reveal_media_asset_id}/stream`
               : undefined,
             revealGif:
@@ -137,11 +147,11 @@ export class GameEngine extends EventEmitter {
                 ? clueConfig.revealGif
                 : undefined,
             choices:
-              visibleClue.type === 'music_multiple_choice'
+              !votingHidden && visibleClue.type === 'music_multiple_choice'
                 ? this.safeChoices(clueConfig ?? {})
                 : undefined,
             price:
-              visibleClue.type === 'price_slider'
+              !votingHidden && visibleClue.type === 'price_slider'
                 ? this.safePriceConfig(clueConfig ?? {})
                 : undefined,
             answer: revealed ? this.revealedAnswer(visibleClue, clueConfig ?? {}) : undefined,
@@ -162,6 +172,8 @@ export class GameEngine extends EventEmitter {
                 .all(room.id, clue.id) as Array<{ playerId: string }>
             ).map(({ playerId }) => playerId)
           : [],
+      specialVotedPlayerIds: this.validSpecialVotes(room).map(([voterId]) => voterId),
+      forcedPlayerId: room.state.forcedPlayerId,
       usedClueIds: room.state.usedClueIds,
       board,
       players: this.rooms.scores(room.id),
@@ -198,8 +210,12 @@ export class GameEngine extends EventEmitter {
   }
 
   startGame(room: RoomRecord): RoomRecord {
-    if (this.rooms.listPlayers(room.id).length === 0) throw new Error('At least one player is required')
+    const playerCount = this.rooms.listPlayers(room.id).length
+    if (playerCount === 0) throw new Error('At least one player is required')
     const specials = room.settings.specials ?? []
+    if (specials.includes('forced_player') && playerCount < 2) {
+      throw new Error('Forced Player requires at least two players')
+    }
     const clueIds = (
       this.database
         .prepare(
@@ -233,8 +249,89 @@ export class GameEngine extends EventEmitter {
     const clue = this.getClue(clueId)
     if (!clue || !this.clueBelongsToPack(clueId, room.packId)) throw new Error('Clue not found')
     if (clue.is_final) throw new Error('Use the Final Question control for that clue')
-    const readyRoom = this.transition(room, 'CLUE_READY', { activeClueId: clueId }, 'active')
+    const readyRoom = this.transition(
+      room,
+      'CLUE_READY',
+      {
+        activeClueId: clueId,
+        specialVotes: {},
+        forcedPlayerId: undefined,
+      },
+      'active',
+    )
+    if (this.activeSpecial(readyRoom) === 'forced_player') {
+      return this.transition(readyRoom, 'SPECIAL_VOTE', {}, 'active')
+    }
     return this.openAnswers(readyRoom)
+  }
+
+  submitSpecialVote(room: RoomRecord, voterId: string, targetPlayerId: string): RoomRecord {
+    if (room.state.phase !== 'SPECIAL_VOTE' || this.activeSpecial(room) !== 'forced_player') {
+      throw new Error('Forced Player voting is not open')
+    }
+    const players = this.rooms.listPlayers(room.id)
+    if (!players.some(({ id }) => id === voterId)) throw new Error('Player not found')
+    if (!players.some(({ id }) => id === targetPlayerId)) throw new Error('Choose an active player')
+    if (voterId === targetPlayerId) throw new Error('You cannot vote for yourself')
+    if (this.validSpecialVotes(room).some(([validVoterId]) => validVoterId === voterId)) {
+      throw new Error('Your vote is already locked')
+    }
+
+    const updated = this.rooms.saveState(
+      room.id,
+      {
+        ...room.state,
+        specialVotes: { ...room.state.specialVotes, [voterId]: targetPlayerId },
+      },
+      'active',
+      room.stateVersion,
+    )
+    this.emitUpdate(room.id)
+    return this.validSpecialVotes(updated).length === players.length
+      ? this.resolveSpecialVote(updated)
+      : updated
+  }
+
+  resolveSpecialVote(room: RoomRecord): RoomRecord {
+    if (room.state.phase !== 'SPECIAL_VOTE' || this.activeSpecial(room) !== 'forced_player') {
+      throw new Error('Forced Player voting is not open')
+    }
+    const players = this.rooms.listPlayers(room.id)
+    if (players.length === 0) throw new Error('At least one player is required')
+    const votes = this.validSpecialVotes(room).map(([, targetPlayerId]) => targetPlayerId)
+    let forcedPlayerId: string
+    if (players.length === 1) {
+      forcedPlayerId = players[0]!.id
+    } else {
+      if (votes.length === 0) {
+        throw new Error('At least one player must vote before starting the question')
+      }
+      const counts = new Map<string, number>()
+      for (const playerId of votes) counts.set(playerId, (counts.get(playerId) ?? 0) + 1)
+      const highestCount = Math.max(...counts.values())
+      const finalists = [...counts.entries()]
+        .filter(([, count]) => count === highestCount)
+        .map(([playerId]) => playerId)
+      forcedPlayerId = finalists[randomInt(finalists.length)]!
+    }
+    const selected = this.rooms.saveState(
+      room.id,
+      { ...room.state, forcedPlayerId },
+      'active',
+      room.stateVersion,
+    )
+    this.emitUpdate(room.id)
+    return this.openAnswers(selected)
+  }
+
+  private validSpecialVotes(room: RoomRecord): Array<[string, string]> {
+    const activePlayerIds = new Set(this.rooms.listPlayers(room.id).map(({ id }) => id))
+    return Object.entries(room.state.specialVotes ?? {}).filter(
+      ([voterId, targetPlayerId]) =>
+        voterId !== targetPlayerId &&
+        activePlayerIds.has(voterId) &&
+        activePlayerIds.has(targetPlayerId),
+    )
   }
 
   startFinalRound(room: RoomRecord): RoomRecord {
@@ -325,6 +422,9 @@ export class GameEngine extends EventEmitter {
   openAnswers(room: RoomRecord): RoomRecord {
     const clue = room.state.activeClueId ? this.getClue(room.state.activeClueId) : undefined
     if (!clue) throw new Error('No clue is selected')
+    if (this.activeSpecial(room) === 'forced_player' && !room.state.forcedPlayerId) {
+      throw new Error('Complete Forced Player voting before opening answers')
+    }
     const timerSeconds = this.effectiveTimerSeconds(room, clue)
     const roomAfter = this.transition(
       room,
@@ -352,6 +452,12 @@ export class GameEngine extends EventEmitter {
     }
     const player = this.rooms.getPlayer(playerId)
     if (!player || player.roomId !== room.id || player.kicked) throw new Error('Player not found')
+    if (
+      this.activeSpecial(room) === 'forced_player' &&
+      room.state.forcedPlayerId !== playerId
+    ) {
+      throw new Error('Only the selected player can answer this clue')
+    }
 
     const clue = this.getClue(room.state.activeClueId)
     if (!clue) throw new Error('Clue not found')
@@ -417,7 +523,14 @@ export class GameEngine extends EventEmitter {
     return this.transition(
       room,
       'BOARD',
-      { usedClueIds, activeClueId: undefined, deadline: undefined, startedAt: undefined },
+      {
+        usedClueIds,
+        activeClueId: undefined,
+        deadline: undefined,
+        startedAt: undefined,
+        specialVotes: undefined,
+        forcedPlayerId: undefined,
+      },
       'active',
     )
   }
@@ -438,6 +551,8 @@ export class GameEngine extends EventEmitter {
         previousPhase: undefined,
         remainingMs: undefined,
         finalRound: false,
+        specialVotes: undefined,
+        forcedPlayerId: undefined,
       },
       'active',
       room.stateVersion,
@@ -459,14 +574,23 @@ export class GameEngine extends EventEmitter {
     this.clearTimer(room.id)
     this.clearClueAttempts(room, false)
     const timerSeconds = this.effectiveTimerSeconds(room, clue)
-    const phase = room.state.finalRound ? 'FINAL_QUESTION' : 'ACCEPTING_ANSWERS'
+    const forcedPlayer = this.activeSpecial(room) === 'forced_player'
+    const phase = room.state.finalRound
+      ? 'FINAL_QUESTION'
+      : forcedPlayer
+        ? 'SPECIAL_VOTE'
+        : 'ACCEPTING_ANSWERS'
     const updated = this.rooms.saveState(
       room.id,
       {
         ...room.state,
         phase,
-        deadline: new Date(Date.now() + timerSeconds * 1000).toISOString(),
-        startedAt: new Date().toISOString(),
+        deadline: forcedPlayer
+          ? undefined
+          : new Date(Date.now() + timerSeconds * 1000).toISOString(),
+        startedAt: forcedPlayer ? undefined : new Date().toISOString(),
+        specialVotes: forcedPlayer ? {} : room.state.specialVotes,
+        forcedPlayerId: forcedPlayer ? undefined : room.state.forcedPlayerId,
         revealedAt: undefined,
         previousPhase: undefined,
         remainingMs: undefined,
@@ -474,7 +598,7 @@ export class GameEngine extends EventEmitter {
       'active',
       room.stateVersion,
     )
-    this.scheduleClose(updated, timerSeconds * 1000)
+    if (!forcedPlayer) this.scheduleClose(updated, timerSeconds * 1000)
     this.emitUpdate(room.id)
     return updated
   }
@@ -528,6 +652,7 @@ export class GameEngine extends EventEmitter {
       ![
         'ACCEPTING_ANSWERS',
         'CLUE_READY',
+        'SPECIAL_VOTE',
         'ANSWERS_CLOSED',
         'REVEAL',
         'LEADERBOARD',
@@ -681,6 +806,8 @@ export class GameEngine extends EventEmitter {
     this.database.transaction(() => {
       if (room.state.finalRound) {
         this.evaluateFinalClue(room, clue, config, submissions)
+      } else if (this.activeSpecial(room) === 'forced_player') {
+        this.evaluateForcedPlayer(room, clue, config, submissions)
       } else if (clue.type === 'price_slider') {
         this.evaluatePrice(room, clue, config, submissions)
       } else {
@@ -823,6 +950,124 @@ export class GameEngine extends EventEmitter {
             )
           }
         }
+  }
+
+  private evaluateForcedPlayer(
+    room: RoomRecord,
+    clue: ClueRow,
+    config: Record<string, unknown>,
+    submissions: SubmissionRow[],
+  ): void {
+    const forcedPlayerId = room.state.forcedPlayerId
+    if (!forcedPlayerId) throw new Error('Forced Player has no selected player')
+    const submission = submissions.find(({ player_id }) => player_id === forcedPlayerId)
+    const answer = submission ? (JSON.parse(submission.answer_json) as unknown) : null
+    let correct = false
+
+    if (clue.type === 'price_slider') {
+      const guess = Number(answer)
+      const target = Number(config.correctPrice)
+      correct =
+        answer !== null && Number.isFinite(guess) && Number.isFinite(target) && guess === target
+    } else {
+      const accepted = [
+        ...(Array.isArray(config.acceptedAnswers)
+          ? config.acceptedAnswers.filter((value): value is string => typeof value === 'string')
+          : []),
+        ...(typeof config.correctAnswer === 'string' ? [config.correctAnswer] : []),
+      ]
+      correct = typeof answer === 'string' && matchFreeTextAnswer(answer, accepted).matched
+    }
+
+    const evaluation = {
+      kind: 'FORCED_PLAYER',
+      special: 'forced_player',
+      forcedPlayerId,
+      answered: Boolean(submission),
+      correct,
+      points: correct ? clue.board_value : 0,
+    }
+    if (submission) {
+      this.updateSubmission(submission.id, correct, undefined, correct ? clue.board_value : 0, evaluation)
+    } else {
+      this.insertSpecialSubmission(room, clue, forcedPlayerId, false, 0, evaluation)
+    }
+
+    const source = clue.type === 'price_slider' ? 'price' : 'music'
+    if (correct) {
+      this.addScore(
+        room.id,
+        forcedPlayerId,
+        clue.id,
+        clue.board_value,
+        source,
+        'Forced Player answered correctly',
+        'system',
+      )
+      return
+    }
+
+    for (const player of this.rooms.listPlayers(room.id)) {
+      if (player.id === forcedPlayerId) continue
+      const recipientEvaluation = {
+        kind: 'FORCED_PLAYER',
+        special: 'forced_player',
+        forcedPlayerId,
+        answered: false,
+        correct: true,
+        awardedBecauseForcedPlayerMissed: true,
+        points: clue.board_value,
+      }
+      this.insertSpecialSubmission(
+        room,
+        clue,
+        player.id,
+        true,
+        clue.board_value,
+        recipientEvaluation,
+      )
+      this.addScore(
+        room.id,
+        player.id,
+        clue.id,
+        clue.board_value,
+        source,
+        'Forced Player answered incorrectly',
+        'system',
+      )
+    }
+  }
+
+  private insertSpecialSubmission(
+    room: RoomRecord,
+    clue: ClueRow,
+    playerId: string,
+    correct: boolean,
+    points: number,
+    evaluation: Record<string, unknown>,
+  ): void {
+    this.database
+      .prepare(
+        `INSERT INTO submissions
+         (id, room_id, player_id, clue_id, answer_json, elapsed_ms, correct,
+          points_awarded, evaluation_json, clue_prompt, clue_type, category_title)
+         VALUES (?, ?, ?, ?, 'null', ?, ?, ?, ?, ?, ?, (
+           SELECT title FROM categories WHERE id = ?
+         ))`,
+      )
+      .run(
+        createId(),
+        room.id,
+        playerId,
+        clue.id,
+        this.effectiveTimerSeconds(room, clue) * 1000,
+        correct ? 1 : 0,
+        points,
+        JSON.stringify(evaluation),
+        clue.prompt,
+        clue.type,
+        clue.category_id,
+      )
   }
 
   private evaluateMusic(

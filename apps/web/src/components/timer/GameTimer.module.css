@@ -1,6 +1,7 @@
 .timer {
   --ring-size: 96px;
   --ring-stroke: 8px;
+  --timer-color: var(--color-success);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -32,13 +33,17 @@
 
 .progress {
   fill: none;
-  stroke: var(--color-teal);
+  stroke: var(--timer-color);
   stroke-linecap: round;
   transition: stroke-dashoffset var(--duration-base) linear, stroke var(--duration-base) var(--ease-standard);
 }
 
-.progress.low {
-  stroke: var(--color-danger);
+.timer.warning {
+  --timer-color: var(--color-warning);
+}
+
+.timer.danger {
+  --timer-color: var(--color-danger);
 }
 
 .value {
@@ -50,7 +55,8 @@
   font-family: var(--font-mono);
   font-weight: var(--font-weight-bold);
   font-variant-numeric: tabular-nums;
-  color: var(--color-text);
+  color: var(--timer-color);
+  transition: color var(--duration-base) var(--ease-standard);
 }
 
 .timer.display .value {

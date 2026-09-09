@@ -68,7 +68,7 @@ export interface RawResult {
   correct: number
   rank: number | null
   pointsAwarded: number
-  evaluation: string
+  evaluation: string | null
 }
 
 export interface RawSubmission {
@@ -88,6 +88,8 @@ export interface RawSnapshot {
   finalRound?: boolean
   hasFinalQuestion?: boolean
   wageredPlayerIds?: string[]
+  specialVotedPlayerIds?: string[]
+  forcedPlayerId?: string
   activeClue?: RawActiveClue
   usedClueIds: string[]
   board: RawBoardRow[]
@@ -253,6 +255,8 @@ export function roomFromSnapshot(snapshot: RawSnapshot): RoomSummary {
     finalRound: Boolean(snapshot.finalRound),
     hasFinalQuestion: Boolean(snapshot.hasFinalQuestion),
     teams: snapshot.teams ?? [],
+    specialVotedPlayerIds: snapshot.specialVotedPlayerIds ?? [],
+    forcedPlayerId: snapshot.forcedPlayerId,
   }
 }
 
@@ -263,7 +267,15 @@ export function ownResultFromSnapshot(
   if (!playerId || !snapshot.results) return undefined
   const mine = snapshot.results.find((result) => result.playerId === playerId)
   if (!mine) return undefined
-  return { correct: Boolean(mine.correct), pointsAwarded: mine.pointsAwarded }
+  const evaluation = mine.evaluation
+    ? (JSON.parse(mine.evaluation) as Record<string, unknown>)
+    : {}
+  return {
+    correct: Boolean(mine.correct),
+    pointsAwarded: mine.pointsAwarded,
+    awardedBecauseForcedPlayerMissed:
+      evaluation.awardedBecauseForcedPlayerMissed === true || undefined,
+  }
 }
 
 export function priceResultsFromSnapshot(snapshot: RawSnapshot): PriceResultEntry[] | undefined {

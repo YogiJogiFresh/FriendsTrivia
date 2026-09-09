@@ -9,7 +9,11 @@
  */
 
 export type ClueType = 'music-multiple-choice' | 'music-free-text' | 'price-slider'
-export type SpecialType = 'double_points' | 'double_or_nothing' | 'speed_round'
+export type SpecialType =
+  | 'double_points'
+  | 'double_or_nothing'
+  | 'speed_round'
+  | 'forced_player'
 
 export const SPECIAL_DETAILS: Record<SpecialType, { name: string; description: string }> = {
   double_points: {
@@ -23,6 +27,10 @@ export const SPECIAL_DETAILS: Record<SpecialType, { name: string; description: s
   speed_round: {
     name: 'Speed Round',
     description: 'The answer timer is cut in half.',
+  },
+  forced_player: {
+    name: 'Forced Player',
+    description: 'Vote for one player to answer. If they miss, everyone else scores.',
   },
 }
 
@@ -123,6 +131,7 @@ export type GamePhase =
   | 'LOBBY'
   | 'BOARD'
   | 'CLUE_READY'
+  | 'SPECIAL_VOTE'
   | 'ACCEPTING_ANSWERS'
   | 'ANSWERS_CLOSED'
   | 'REVEAL'
@@ -144,6 +153,8 @@ export interface RoomSummary {
   finalRound: boolean
   hasFinalQuestion: boolean
   teams: string[]
+  specialVotedPlayerIds: string[]
+  forcedPlayerId?: string
 }
 
 export interface GameState {
@@ -157,6 +168,10 @@ export interface GameState {
   /** Best revealed guesses for a price clue, ordered by awarded points. */
   priceResults?: PriceResultEntry[]
   /** The current player's own result for the just-revealed clue, if any. */
-  ownResult?: { correct: boolean; pointsAwarded: number }
+  ownResult?: {
+    correct: boolean
+    pointsAwarded: number
+    awardedBecauseForcedPlayerMissed?: boolean
+  }
   connection: ConnectionState
 }

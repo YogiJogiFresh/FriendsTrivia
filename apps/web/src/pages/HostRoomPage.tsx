@@ -168,6 +168,26 @@ export function HostRoomPage() {
             </Card>
           ) : null}
 
+          {phase === 'SPECIAL_VOTE' ? (
+            <Card className={styles.cluePanel}>
+              <div className={styles.specialBanner}>
+                <Badge tone="warning">Forced Player</Badge>
+                <span>Players are voting for who must answer.</span>
+              </div>
+              <p>
+                {room.specialVotedPlayerIds.length}/{players.length} votes received
+              </p>
+              <Button
+                variant="primary"
+                size="lg"
+                disabled={room.specialVotedPlayerIds.length === 0 && players.length > 1}
+                onClick={() => run('resolveSpecialVote')}
+              >
+                Close voting & start question
+              </Button>
+            </Card>
+          ) : null}
+
           {(phase === 'CLUE_READY' || phase === 'ACCEPTING_ANSWERS' || phase === 'FINAL_QUESTION' || phase === 'ANSWERS_CLOSED' || (phase === 'PAUSED' && currentClue)) &&
           currentClue ? (
             <Card className={styles.cluePanel}>
@@ -184,6 +204,13 @@ export function HostRoomPage() {
                   <Badge tone="warning">{SPECIAL_DETAILS[currentClue.special].name}</Badge>
                   <span>{SPECIAL_DETAILS[currentClue.special].description}</span>
                 </div>
+              ) : null}
+              {currentClue.special === 'forced_player' && room.forcedPlayerId ? (
+                <p className={styles.forcedPlayer}>
+                  {players.find(({ id }) => id === room.forcedPlayerId)?.nickname ??
+                    'Selected player'}{' '}
+                  must answer
+                </p>
               ) : null}
               <p>{currentClue.prompt}</p>
               {phase !== 'CLUE_READY' ? (

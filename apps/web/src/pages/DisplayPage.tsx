@@ -220,6 +220,19 @@ export function DisplayPage() {
         </div>
       ) : null}
 
+      {game.room.phase === 'SPECIAL_VOTE' ? (
+        <div className={styles.main}>
+          <div className={styles.specialBanner}>
+            <Badge tone="warning">Forced Player</Badge>
+            <span>Players are choosing who must answer.</span>
+          </div>
+          <p className={styles.cluePrompt}>Vote for one player other than yourself.</p>
+          <p>
+            {game.room.specialVotedPlayerIds.length}/{game.players.length} votes received
+          </p>
+        </div>
+      ) : null}
+
       {(game.room.phase === 'CLUE_READY' ||
         game.room.phase === 'ACCEPTING_ANSWERS' ||
         game.room.phase === 'FINAL_QUESTION' ||
@@ -236,6 +249,13 @@ export function DisplayPage() {
               <Badge tone="warning">{SPECIAL_DETAILS[currentClue.special].name}</Badge>
               <span>{SPECIAL_DETAILS[currentClue.special].description}</span>
             </div>
+          ) : null}
+          {currentClue.special === 'forced_player' && game.room.forcedPlayerId ? (
+            <p className={styles.forcedPlayer}>
+              {game.players.find(({ id }) => id === game.room.forcedPlayerId)?.nickname ??
+                'Selected player'}{' '}
+              must answer
+            </p>
           ) : null}
           <p className={styles.cluePrompt}>{currentClue.prompt}</p>
           {game.room.finalRound ? (

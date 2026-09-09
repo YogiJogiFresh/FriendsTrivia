@@ -17,6 +17,7 @@ const supportedSpecials = new Set<SpecialType>([
   'double_points',
   'double_or_nothing',
   'speed_round',
+  'forced_player',
 ])
 
 export async function registerRoomRoutes(

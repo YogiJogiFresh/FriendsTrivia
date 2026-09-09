@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { usePacks } from '../data/hooks'
-import { Badge, Button, Card, TextareaField } from '../components'
+import { Button, Card, TextareaField } from '../components'
 import {
   ApiError,
   createRoom,
@@ -169,7 +169,7 @@ export function HostHomePage() {
         </section>
       ) : null}
 
-      <div className={styles.grid}>
+      <div className={styles.packSelection}>
         {loading ? <p>Loading packs…</p> : null}
         {error ? <p role="alert">{error}</p> : null}
         {!loading && !error && visiblePacks.length === 0 ? (
@@ -181,70 +181,87 @@ export function HostHomePage() {
             .
           </p>
         ) : null}
-        {visiblePacks.map((pack) => (
-          <button
-            key={pack.id}
-            type="button"
-            className={[styles.packCard, pack.id === selectedPackId ? styles.packCardSelected : ''].filter(Boolean).join(' ')}
-            onClick={() => setSelectedPackId(pack.id)}
-            aria-pressed={pack.id === selectedPackId}
-          >
-            <span className={styles.packHeader}>
-              <span className={styles.packTitle}>{pack.title}</span>
-              <Badge tone={pack.status === 'ready' ? 'success' : 'warning'}>{pack.status}</Badge>
+        {!loading && !error && visiblePacks.length > 0 ? (
+          <label className={styles.packSelectLabel}>
+            <span>Trivia pack</span>
+            <select
+              className={styles.packSelect}
+              value={selectedPackId ?? ''}
+              onChange={(event) => setSelectedPackId(event.target.value || null)}
+            >
+              <option value="">Choose a pack</option>
+              {visiblePacks.map((pack) => (
+                <option key={pack.id} value={pack.id}>
+                  {pack.title} ({pack.status})
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+        {selectedPack ? (
+          <div className={styles.packSummary}>
+            <strong>{selectedPack.title}</strong>
+            <span>{selectedPack.description}</span>
+            <span>
+              {selectedPack.categoryCount} categories · {selectedPack.clueCount} clues
             </span>
-            <span className={styles.packDescription}>{pack.description}</span>
-            <span className={styles.packMeta}>
-              <span>{pack.categoryCount} categories</span>
-              <span>{pack.clueCount} clues</span>
-            </span>
-          </button>
-        ))}
+          </div>
+        ) : null}
       </div>
 
-      <Card className={styles.teamSetup}>
-        <TextareaField
-          label="Teams (optional)"
-          value={teamsText}
-          onChange={(event) => setTeamsText(event.target.value)}
-          placeholder={'Red Team\nBlue Team'}
-          hint="Enter one team per line. Use either no teams or 2-8 unique teams."
-          error={teamsValid ? undefined : 'Use 2-8 unique names, each no longer than 30 characters.'}
-        />
-      </Card>
-
-      <Card className={styles.specialSetup}>
-        <h2>Clue specials (optional)</h2>
-        <p>Each enabled special is hidden on one random clue and revealed when that clue starts.</p>
-        <div className={styles.specialOptions}>
-          {([
-            ['double_points', 'Double Points', 'Every positive award is doubled.'],
-            [
-              'double_or_nothing',
-              'Double or Nothing',
-              'Win double, or lose the clue value for an incorrect or missing answer.',
-            ],
-            ['speed_round', 'Speed Round', 'The answer timer is cut in half.'],
-          ] as const).map(([id, name, description]) => (
-            <label key={id} className={styles.specialOption}>
-              <input
-                type="checkbox"
-                checked={specials.includes(id)}
-                onChange={() => toggleSpecial(id)}
-              />
-              <span>
-                <strong>{name}</strong>
-                <small>{description}</small>
-              </span>
-            </label>
-          ))}
+      <details className={styles.setupSection}>
+        <summary>Teams (optional)</summary>
+        <div className={styles.setupSectionBody}>
+          <TextareaField
+            label="Team names"
+            value={teamsText}
+            onChange={(event) => setTeamsText(event.target.value)}
+            placeholder={'Red Team\nBlue Team'}
+            hint="Enter one team per line. Use either no teams or 2-8 unique teams."
+            error={teamsValid ? undefined : 'Use 2-8 unique names, each no longer than 30 characters.'}
+          />
         </div>
-        {!enoughCluesForSpecials && selectedPack ? (
-          <p role="alert" className={styles.specialError}>
-            Select fewer specials or use a pack with at least {specials.length} ordinary clues.
-          </p>
-        ) : null}
-      </Card>
+      </details>
+
+      <details className={styles.setupSection}>
+        <summary>Clue specials (optional)</summary>
+        <div className={styles.setupSectionBody}>
+          <p>Each enabled special is hidden on one random clue and revealed when that clue starts.</p>
+          <div className={styles.specialOptions}>
+            {([
+              ['double_points', 'Double Points', 'Every positive award is doubled.'],
+              [
+                'double_or_nothing',
+                'Double or Nothing',
+                'Win double, or lose the clue value for an incorrect or missing answer.',
+              ],
+              ['speed_round', 'Speed Round', 'The answer timer is cut in half.'],
+              [
+                'forced_player',
+                'Forced Player',
+                'Players vote for one person to answer; everyone else scores if they miss.',
+              ],
+            ] as const).map(([id, name, description]) => (
+              <label key={id} className={styles.specialOption}>
+                <input
+                  type="checkbox"
+                  checked={specials.includes(id)}
+                  onChange={() => toggleSpecial(id)}
+                />
+                <span>
+                  <strong>{name}</strong>
+                  <small>{description}</small>
+                </span>
+              </label>
+            ))}
+          </div>
+          {!enoughCluesForSpecials && selectedPack ? (
+            <p role="alert" className={styles.specialError}>
+              Select fewer specials or use a pack with at least {specials.length} ordinary clues.
+            </p>
+          ) : null}
+        </div>
+      </details>
 
       <div className={styles.launchBar}>
         <span className={styles.launchInfo}>

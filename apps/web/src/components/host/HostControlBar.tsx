@@ -33,6 +33,7 @@ export function HostControlBar({
 }: HostControlBarProps) {
   const isLiveClue =
     phase === 'CLUE_READY' ||
+    phase === 'SPECIAL_VOTE' ||
     phase === 'ACCEPTING_ANSWERS' ||
     phase === 'FINAL_QUESTION' ||
     phase === 'ANSWERS_CLOSED'

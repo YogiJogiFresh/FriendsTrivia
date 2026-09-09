@@ -29,6 +29,7 @@ export interface PlayerRoomResult {
   joinError: string | null
   submitAnswer: (answer: string | number) => Promise<void>
   submitWager: (amount: number) => Promise<void>
+  submitSpecialVote: (playerId: string) => Promise<void>
   submitting: boolean
   submitError: string | null
 }
@@ -192,6 +193,24 @@ export function usePlayerRoom(roomCode: string): PlayerRoomResult {
     [snapshot?.stateVersion],
   )
 
+  const submitSpecialVote = useCallback(
+    async (targetPlayerId: string) => {
+      setSubmitting(true)
+      setSubmitError(null)
+      try {
+        await emitWithAck('player:special-vote', {
+          playerId: targetPlayerId,
+        })
+      } catch (error) {
+        setSubmitError(error instanceof Error ? error.message : 'Unable to submit your vote')
+        throw error
+      } finally {
+        setSubmitting(false)
+      }
+    },
+    [],
+  )
+
   const game: GameState | null = snapshot
     ? {
         room: roomFromSnapshot(snapshot),
@@ -218,6 +237,7 @@ export function usePlayerRoom(roomCode: string): PlayerRoomResult {
     joinError,
     submitAnswer,
     submitWager,
+    submitSpecialVote,
     submitting,
     submitError,
   }

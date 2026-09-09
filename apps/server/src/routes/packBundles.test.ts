@@ -4,6 +4,7 @@ import path from 'node:path'
 
 import multipart from '@fastify/multipart'
 import Fastify from 'fastify'
+import { unzipSync } from 'fflate'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { openDatabase } from '../database.js'
@@ -109,6 +110,57 @@ describe('portable pack bundles', () => {
         root,
       ),
     ).toThrow()
+  })
+
+  it('deduplicates byte-identical songs in optimized exports', () => {
+    const database = openDatabase(':memory:')
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'friends-trivia-optimized-export-'))
+    fs.mkdirSync(path.join(root, 'songs'))
+    cleanups.push(() => {
+      database.close()
+      fs.rmSync(root, { recursive: true, force: true })
+    })
+    const media = new MediaRepository(database)
+    const contents = Buffer.from('same audio bytes '.repeat(200))
+    fs.writeFileSync(path.join(root, 'songs', 'clue.mp3'), contents)
+    fs.writeFileSync(path.join(root, 'songs', 'answer.mp3'), contents)
+    const clueSong = media.create({
+      relativePath: path.join('songs', 'clue.mp3'),
+      originalName: 'Clue.mp3',
+      mimeType: 'audio/mpeg',
+      sizeBytes: contents.byteLength,
+    })
+    const answerSong = media.create({
+      relativePath: path.join('songs', 'answer.mp3'),
+      originalName: 'Answer.mp3',
+      mimeType: 'audio/mpeg',
+      sizeBytes: contents.byteLength,
+    })
+    const pack = {
+      title: 'Optimized',
+      categories: [
+        {
+          title: 'Music',
+          clues: [
+            {
+              type: 'music_free_text',
+              boardValue: 100,
+              prompt: 'Name it',
+              mediaAssetId: clueSong.id,
+              revealMediaAssetId: answerSong.id,
+              config: { correctAnswer: 'Answer' },
+            },
+          ],
+        },
+      ],
+    }
+
+    const standard = createPackBundle(pack, media, root)
+    const optimized = createPackBundle(pack, media, root, { optimized: true })
+    const files = unzipSync(optimized)
+
+    expect(Object.keys(files).filter((name) => name.startsWith('songs/'))).toHaveLength(1)
+    expect(optimized.byteLength).toBeLessThan(standard.byteLength)
   })
 
   it('rejects legacy JSON uploads at the bundle endpoint', async () => {

@@ -60,6 +60,12 @@ export const ClientEventSchemas = {
       amount: z.number().int().nonnegative(),
     })
     .strict(),
+  'player:submit-special-vote': z
+    .object({
+      requestId: RequestIdSchema,
+      playerId: EntityIdSchema,
+    })
+    .strict(),
   'host:set-lock': z
     .object({
       ...HostCommandBase,
@@ -82,6 +88,7 @@ export const ClientEventSchemas = {
     })
     .strict(),
   'host:open-answers': z.object(HostCommandBase).strict(),
+  'host:resolve-special-vote': z.object(HostCommandBase).strict(),
   'host:pause': z.object(HostCommandBase).strict(),
   'host:resume': z.object(HostCommandBase).strict(),
   'host:close-answers': z.object(HostCommandBase).strict(),

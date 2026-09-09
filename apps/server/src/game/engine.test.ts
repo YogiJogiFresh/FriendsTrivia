@@ -127,6 +127,15 @@ describe('game engine', () => {
     })
   })
 
+  it('requires at least two players when Forced Player is enabled', () => {
+    const game = createGame(['forced_player'])
+    game.rooms.kickPlayer(game.room.id, game.playerTwo.id)
+
+    expect(() => game.engine.startGame(game.room)).toThrow(
+      'Forced Player requires at least two players',
+    )
+  })
+
   it('doubles positive music points without penalizing incorrect answers', () => {
     const game = createGame()
     let room = game.engine.startGame(game.room)
@@ -227,6 +236,225 @@ describe('game engine', () => {
     room = game.engine.goBack(room)
     expect(game.rooms.scores(room.id).every(({ score }) => score === 0)).toBe(true)
     expect(room.state.specialAssignments?.[game.clueIds[0] ?? '']).toBe('double_or_nothing')
+  })
+
+  it('collects Forced Player votes and restricts answering to the selected player', () => {
+    const game = createGame()
+    let room = game.engine.startGame(game.room)
+    room = game.rooms.saveState(
+      room.id,
+      {
+        ...room.state,
+        specialAssignments: { [game.clueIds[0] ?? '']: 'forced_player' },
+      },
+      room.status,
+      room.stateVersion,
+    )
+    room = game.engine.selectClue(room, game.clueIds[0] ?? '')
+
+    expect(room.state.phase).toBe('SPECIAL_VOTE')
+    expect(game.engine.publicSnapshot(room).activeClue?.prompt).toBe(
+      'Vote for the player who must answer this clue.',
+    )
+    expect(() =>
+      game.engine.submitSpecialVote(room, game.playerOne.id, game.playerOne.id),
+    ).toThrow('cannot vote for yourself')
+
+    room = game.engine.submitSpecialVote(room, game.playerOne.id, game.playerTwo.id)
+    expect(() =>
+      game.engine.submitSpecialVote(room, game.playerOne.id, game.playerTwo.id),
+    ).toThrow('already locked')
+    room = game.engine.resolveSpecialVote(room)
+
+    expect(room.state.phase).toBe('ACCEPTING_ANSWERS')
+    expect(room.state.forcedPlayerId).toBe(game.playerTwo.id)
+    expect(() =>
+      game.engine.submitAnswer(room, game.playerOne.id, 'Dancing Queen'),
+    ).toThrow('Only the selected player')
+  })
+
+  it('opens the clue automatically after every player votes', () => {
+    const game = createGame()
+    let room = game.engine.startGame(game.room)
+    room = game.rooms.saveState(
+      room.id,
+      {
+        ...room.state,
+        specialAssignments: { [game.clueIds[0] ?? '']: 'forced_player' },
+      },
+      room.status,
+      room.stateVersion,
+    )
+    room = game.engine.selectClue(room, game.clueIds[0] ?? '')
+    room = game.engine.submitSpecialVote(room, game.playerOne.id, game.playerTwo.id)
+    room = game.engine.submitSpecialVote(room, game.playerTwo.id, game.playerOne.id)
+
+    expect(room.state.phase).toBe('ACCEPTING_ANSWERS')
+    expect([game.playerOne.id, game.playerTwo.id]).toContain(room.state.forcedPlayerId)
+  })
+
+  it('hides clue content during Forced Player voting and ignores kicked-player votes', () => {
+    const game = createGame()
+    let room = game.engine.startGame(game.room)
+    room = game.rooms.saveState(
+      room.id,
+      {
+        ...room.state,
+        specialAssignments: { [game.clueIds[0] ?? '']: 'forced_player' },
+      },
+      room.status,
+      room.stateVersion,
+    )
+    room = game.engine.selectClue(room, game.clueIds[0] ?? '')
+    expect(game.engine.publicSnapshot(room).activeClue).toMatchObject({
+      prompt: 'Vote for the player who must answer this clue.',
+      mediaUrl: undefined,
+    })
+    room = game.engine.pause(room)
+    expect(game.engine.publicSnapshot(room).activeClue).toMatchObject({
+      prompt: 'Vote for the player who must answer this clue.',
+      mediaUrl: undefined,
+    })
+    room = game.engine.resume(room)
+    room = game.engine.submitSpecialVote(room, game.playerOne.id, game.playerTwo.id)
+    game.rooms.kickPlayer(room.id, game.playerTwo.id)
+
+    expect(game.engine.publicSnapshot(room).specialVotedPlayerIds).toEqual([])
+    room = game.engine.resolveSpecialVote(room)
+    expect(room.state.forcedPlayerId).toBe(game.playerOne.id)
+  })
+
+  it('selects the sole remaining player if the voting roster shrinks to one', () => {
+    const game = createGame()
+    let room = game.engine.startGame(game.room)
+    room = game.rooms.saveState(
+      room.id,
+      {
+        ...room.state,
+        specialAssignments: { [game.clueIds[0] ?? '']: 'forced_player' },
+      },
+      room.status,
+      room.stateVersion,
+    )
+    room = game.engine.selectClue(room, game.clueIds[0] ?? '')
+    game.rooms.kickPlayer(room.id, game.playerTwo.id)
+
+    room = game.engine.resolveSpecialVote(room)
+
+    expect(room.state).toMatchObject({
+      phase: 'ACCEPTING_ANSWERS',
+      forcedPlayerId: game.playerOne.id,
+    })
+  })
+
+  it('lets players replace votes whose target was kicked', () => {
+    const game = createGame()
+    const playerThree = game.rooms.join(game.room, 'Jordan').player
+    let room = game.engine.startGame(game.room)
+    room = game.rooms.saveState(
+      room.id,
+      {
+        ...room.state,
+        specialAssignments: { [game.clueIds[0] ?? '']: 'forced_player' },
+      },
+      room.status,
+      room.stateVersion,
+    )
+    room = game.engine.selectClue(room, game.clueIds[0] ?? '')
+    room = game.engine.submitSpecialVote(room, game.playerOne.id, playerThree.id)
+    room = game.engine.submitSpecialVote(room, game.playerTwo.id, playerThree.id)
+    game.rooms.kickPlayer(room.id, playerThree.id)
+
+    room = game.engine.submitSpecialVote(room, game.playerOne.id, game.playerTwo.id)
+    room = game.engine.submitSpecialVote(room, game.playerTwo.id, game.playerOne.id)
+
+    expect(room.state.phase).toBe('ACCEPTING_ANSWERS')
+    expect([game.playerOne.id, game.playerTwo.id]).toContain(room.state.forcedPlayerId)
+  })
+
+  it('awards the full clue value when the forced player answers correctly', () => {
+    const game = createGame()
+    let room = game.engine.startGame(game.room)
+    room = game.rooms.saveState(
+      room.id,
+      {
+        ...room.state,
+        specialAssignments: { [game.clueIds[0] ?? '']: 'forced_player' },
+      },
+      room.status,
+      room.stateVersion,
+    )
+    room = game.engine.selectClue(room, game.clueIds[0] ?? '')
+    room = game.engine.submitSpecialVote(room, game.playerOne.id, game.playerTwo.id)
+    room = game.engine.resolveSpecialVote(room)
+    game.engine.submitAnswer(room, game.playerTwo.id, 'Dancing Queen')
+    room = game.engine.closeAnswers(room)
+
+    expect(game.rooms.scores(room.id)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ playerId: game.playerOne.id, score: 0 }),
+        expect.objectContaining({ playerId: game.playerTwo.id, score: 200 }),
+      ]),
+    )
+  })
+
+  it('awards everyone else when the forced player answers incorrectly or not at all', () => {
+    const game = createGame()
+    let room = game.engine.startGame(game.room)
+    room = game.rooms.saveState(
+      room.id,
+      {
+        ...room.state,
+        specialAssignments: { [game.clueIds[0] ?? '']: 'forced_player' },
+      },
+      room.status,
+      room.stateVersion,
+    )
+    room = game.engine.selectClue(room, game.clueIds[0] ?? '')
+    room = game.engine.submitSpecialVote(room, game.playerOne.id, game.playerTwo.id)
+    room = game.engine.resolveSpecialVote(room)
+    game.engine.submitAnswer(room, game.playerTwo.id, 'Wrong')
+    room = game.engine.closeAnswers(room)
+
+    expect(game.rooms.scores(room.id)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ playerId: game.playerOne.id, score: 200 }),
+        expect.objectContaining({ playerId: game.playerTwo.id, score: 0 }),
+      ]),
+    )
+    room = game.engine.resetClue(room)
+    expect(room.state).toMatchObject({
+      phase: 'SPECIAL_VOTE',
+      specialVotes: {},
+    })
+    expect(room.state.forcedPlayerId).toBeUndefined()
+    expect(game.rooms.scores(room.id).every(({ score }) => score === 0)).toBe(true)
+  })
+
+  it('requires an exact price guess from the forced player', () => {
+    const game = createGame()
+    let room = game.engine.startGame(game.room)
+    room = game.rooms.saveState(
+      room.id,
+      {
+        ...room.state,
+        specialAssignments: { [game.clueIds[1] ?? '']: 'forced_player' },
+      },
+      room.status,
+      room.stateVersion,
+    )
+    room = game.engine.selectClue(room, game.clueIds[1] ?? '')
+    room = game.engine.submitSpecialVote(room, game.playerOne.id, game.playerTwo.id)
+    room = game.engine.resolveSpecialVote(room)
+    game.engine.submitAnswer(room, game.playerTwo.id, 90)
+    room = game.engine.closeAnswers(room)
+
+    expect(game.rooms.scores(room.id)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ playerId: game.playerOne.id, score: 400 }),
+        expect.objectContaining({ playerId: game.playerTwo.id, score: 0 }),
+      ]),
+    )
   })
 
   it('publishes a LAN-safe player join URL', () => {

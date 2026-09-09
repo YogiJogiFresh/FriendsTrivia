@@ -153,7 +153,7 @@ describe('shared contract schemas', () => {
   it('accepts only unique supported clue specials', () => {
     expect(
       GameSettingsSchema.safeParse({
-        specials: ['double_points', 'double_or_nothing', 'speed_round'],
+        specials: ['double_points', 'double_or_nothing', 'speed_round', 'forced_player'],
       }).success,
     ).toBe(true)
     expect(

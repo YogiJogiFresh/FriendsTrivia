@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { createHash } from 'node:crypto'
 
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate'
 import type { FastifyInstance } from 'fastify'
@@ -45,6 +46,10 @@ interface PackWithMedia {
   }>
 }
 
+interface PackBundleOptions {
+  optimized?: boolean
+}
+
 function referencedMediaIds(pack: PackWithMedia): string[] {
   const ids = new Set<string>()
   for (const category of pack.categories) {
@@ -60,9 +65,11 @@ export function createPackBundle(
   pack: PackWithMedia,
   media: MediaRepository,
   contentRoot: string,
+  options: PackBundleOptions = {},
 ): Uint8Array {
   const files: Record<string, Uint8Array> = {}
   const manifestMedia: BundleMedia[] = []
+  const optimizedFileNames = new Map<string, string>()
 
   for (const sourceId of referencedMediaIds(pack)) {
     const asset = media.get(sourceId)
@@ -73,8 +80,14 @@ export function createPackBundle(
       throw new Error(`Song "${asset.originalName}" exceeds the 50 MB limit`)
     }
     const extension = path.extname(asset.relativePath).toLocaleLowerCase()
-    const fileName = `songs/${sourceId}${extension}`
-    files[fileName] = new Uint8Array(contents)
+    const digest = options.optimized
+      ? createHash('sha256').update(contents).digest('hex')
+      : undefined
+    const fileName =
+      (digest ? optimizedFileNames.get(digest) : undefined) ??
+      `songs/${options.optimized && digest ? digest : sourceId}${extension}`
+    if (!files[fileName]) files[fileName] = new Uint8Array(contents)
+    if (digest) optimizedFileNames.set(digest, fileName)
     manifestMedia.push({
       sourceId,
       fileName,
@@ -89,7 +102,7 @@ export function createPackBundle(
     media: manifestMedia,
   }
   files['pack.json'] = strToU8(JSON.stringify(manifest, null, 2))
-  return zipSync(files, { level: 0 })
+  return zipSync(files, { level: options.optimized ? 6 : 0 })
 }
 
 export function importPackBundle(
@@ -195,11 +208,15 @@ export async function registerPackBundleRoutes(
   media: MediaRepository,
   contentRoot: string,
 ): Promise<void> {
-  app.get<{ Params: { id: string } }>('/api/packs/:id/export-bundle', async (request, reply) => {
+  app.get<{ Params: { id: string }; Querystring: { optimized?: string } }>(
+    '/api/packs/:id/export-bundle',
+    async (request, reply) => {
     const pack = packs.get(request.params.id) as PackWithMedia | undefined
     if (!pack) return reply.code(404).send({ error: 'Pack not found' })
     try {
-      const bundle = createPackBundle(pack, media, contentRoot)
+      const bundle = createPackBundle(pack, media, contentRoot, {
+        optimized: request.query.optimized === 'true',
+      })
       const safeTitle = pack.title.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-|-$/g, '') || 'pack'
       return reply
         .type('application/zip')
@@ -210,7 +227,8 @@ export async function registerPackBundleRoutes(
         .code(400)
         .send({ error: error instanceof Error ? error.message : 'Could not export pack' })
     }
-  })
+  },
+  )
 
   app.post('/api/packs/import-bundle', async (request, reply) => {
     try {
