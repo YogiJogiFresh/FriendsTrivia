@@ -178,8 +178,14 @@ export function importPack(manifest: unknown): Promise<ServerPackDetail> {
   return request('/api/packs/import', json('POST', manifest))
 }
 
-export function packExportUrl(id: string): string {
-  return `/api/packs/${encodeURIComponent(id)}/export`
+export function importPackBundle(file: File): Promise<ServerPackDetail> {
+  const formData = new FormData()
+  formData.append('file', file)
+  return request('/api/packs/import-bundle', { method: 'POST', body: formData })
+}
+
+export function packBundleExportUrl(id: string): string {
+  return `/api/packs/${encodeURIComponent(id)}/export-bundle`
 }
 
 // ---- GIF search ----------------------------------------------------------

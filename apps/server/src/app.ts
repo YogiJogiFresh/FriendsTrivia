@@ -18,6 +18,7 @@ import { RoomRepository } from './repositories/rooms.js'
 import { registerHistoryRoutes } from './routes/history.js'
 import { registerGifRoutes } from './routes/gifs.js'
 import { registerMediaRoutes } from './routes/media.js'
+import { registerPackBundleRoutes } from './routes/packBundles.js'
 import { registerPackRoutes } from './routes/packs.js'
 import { registerRoomRoutes } from './routes/rooms.js'
 import { registerSocketServer } from './socket.js'
@@ -69,6 +70,7 @@ export async function buildApp() {
   const engine = new GameEngine(database, rooms, joinBaseUrl)
   engine.recoverInterruptedGames()
   await registerPackRoutes(app, packs, (packId) => engine.preparePackDeletion(packId))
+  await registerPackBundleRoutes(app, packs, media, config.contentRoot)
   await registerGifRoutes(app, database, {
     giphy: config.giphyApiKey,
     tenor: config.tenorApiKey,

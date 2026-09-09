@@ -91,6 +91,11 @@ Packs can be created in the editor or imported as JSON. See `content\packs\examp
 
 Keep packs in draft status until every music clue has a playable media asset and every clue has a valid answer. Exported manifests contain metadata only, not audio files.
 
+Use **Export pack + songs** to download a portable `.friendstrivia` bundle containing the pack and
+every local song referenced by its clues or answer reveals. On another FriendsTrivia computer,
+choose **Import pack** and select that bundle; its songs are copied into the local media library
+and all clue references are restored. Legacy metadata-only `.json` pack imports are still accepted.
+
 ## Data and backup
 
 The SQLite database defaults to `data\friends-trivia.db`. To back up a setup, stop the server and copy both the database file and `content\songs`. Completed and abandoned sessions, submissions, and score adjustments are retained in game history.

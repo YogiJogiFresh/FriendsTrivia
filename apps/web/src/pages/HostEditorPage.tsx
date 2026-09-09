@@ -10,9 +10,10 @@ import {
   getGifProviders,
   getPack,
   importPack,
+  importPackBundle,
   listMedia,
   mediaStreamUrl,
-  packExportUrl,
+  packBundleExportUrl,
   savePack,
   uploadMedia,
 } from '../lib/apiClient'
@@ -253,9 +254,9 @@ export function HostEditorPage() {
     setImporting(true)
     setImportError(null)
     try {
-      const text = await file.text()
-      const manifest = JSON.parse(text) as unknown
-      const created = await importPack(manifest)
+      const created = file.name.toLocaleLowerCase().endsWith('.json')
+        ? await importPack(JSON.parse(await file.text()) as unknown)
+        : await importPackBundle(file)
       refetchPacks()
       setSelectedPackId(created.id)
     } catch (err) {
@@ -264,7 +265,7 @@ export function HostEditorPage() {
           ? err.message
           : err instanceof SyntaxError
             ? 'That file is not valid JSON.'
-            : 'Could not import that pack.',
+            : 'Could not import that pack bundle.',
       )
     } finally {
       setImporting(false)
@@ -524,12 +525,12 @@ export function HostEditorPage() {
                 + New pack
               </Button>
               <Button variant="secondary" onClick={() => importInputRef.current?.click()} disabled={importing}>
-                {importing ? 'Importing…' : 'Import pack (.json)'}
+                {importing ? 'Importing…' : 'Import pack'}
               </Button>
               <input
                 ref={importInputRef}
                 type="file"
-                accept="application/json"
+                accept=".friendstrivia,.zip,.json,application/zip,application/json"
                 className={styles.hiddenInput}
                 onChange={handleImportFile}
               />
@@ -578,8 +579,8 @@ export function HostEditorPage() {
             </span>
           ) : null}
           {saveSuccess ? <Badge tone="success">Saved</Badge> : null}
-          <Button variant="secondary" href={packExportUrl(pack.id)} download>
-            Export
+          <Button variant="secondary" href={packBundleExportUrl(pack.id)} download>
+            Export pack + songs
           </Button>
           <Button variant="danger" onClick={handleDeletePack} disabled={deletingPack}>
             {deletingPack ? 'Deleting…' : 'Delete pack'}

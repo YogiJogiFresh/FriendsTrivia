@@ -6,7 +6,7 @@ interface PackParams {
   id: string
 }
 
-function isPackInput(value: unknown): value is {
+export function isPackInput(value: unknown): value is {
   title: string
   description?: string
   status?: 'draft' | 'ready' | 'archived'
