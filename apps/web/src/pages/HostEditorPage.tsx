@@ -9,7 +9,6 @@ import {
   getMediaLibraryInfo,
   getGifProviders,
   getPack,
-  importPack,
   importPackBundle,
   listMedia,
   mediaStreamUrl,
@@ -254,18 +253,14 @@ export function HostEditorPage() {
     setImporting(true)
     setImportError(null)
     try {
-      const created = file.name.toLocaleLowerCase().endsWith('.json')
-        ? await importPack(JSON.parse(await file.text()) as unknown)
-        : await importPackBundle(file)
+      const created = await importPackBundle(file)
       refetchPacks()
       setSelectedPackId(created.id)
     } catch (err) {
       setImportError(
         err instanceof ApiError
           ? err.message
-          : err instanceof SyntaxError
-            ? 'That file is not valid JSON.'
-            : 'Could not import that pack bundle.',
+          : 'Could not import that pack bundle.',
       )
     } finally {
       setImporting(false)
@@ -530,7 +525,7 @@ export function HostEditorPage() {
               <input
                 ref={importInputRef}
                 type="file"
-                accept=".friendstrivia,.zip,.json,application/zip,application/json"
+                accept=".friendstrivia"
                 className={styles.hiddenInput}
                 onChange={handleImportFile}
               />

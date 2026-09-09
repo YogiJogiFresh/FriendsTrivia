@@ -216,6 +216,10 @@ export async function registerPackBundleRoutes(
     try {
       const upload = await request.file({ limits: { files: 1, fileSize: MAX_BUNDLE_BYTES } })
       if (!upload) return reply.code(400).send({ error: 'A pack bundle is required' })
+      if (!upload.filename.toLocaleLowerCase().endsWith('.friendstrivia')) {
+        upload.file.resume()
+        return reply.code(400).send({ error: 'Pack imports must use a .friendstrivia bundle' })
+      }
       const contents = await upload.toBuffer()
       return reply.code(201).send(importPackBundle(contents, packs, media, contentRoot))
     } catch (error) {

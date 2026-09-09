@@ -2,12 +2,14 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
+import multipart from '@fastify/multipart'
+import Fastify from 'fastify'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { openDatabase } from '../database.js'
 import { MediaRepository } from '../repositories/media.js'
 import { PackRepository } from '../repositories/packs.js'
-import { createPackBundle, importPackBundle } from './packBundles.js'
+import { createPackBundle, importPackBundle, registerPackBundleRoutes } from './packBundles.js'
 
 const cleanups: Array<() => void> = []
 
@@ -107,5 +109,46 @@ describe('portable pack bundles', () => {
         root,
       ),
     ).toThrow()
+  })
+
+  it('rejects legacy JSON uploads at the bundle endpoint', async () => {
+    const database = openDatabase(':memory:')
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'friends-trivia-json-rejection-'))
+    fs.mkdirSync(path.join(root, 'songs'))
+    const app = Fastify()
+    await app.register(multipart)
+    await registerPackBundleRoutes(
+      app,
+      new PackRepository(database),
+      new MediaRepository(database),
+      root,
+    )
+    cleanups.push(() => {
+      void app.close()
+      database.close()
+      fs.rmSync(root, { recursive: true, force: true })
+    })
+
+    const boundary = 'friends-trivia-test'
+    const payload = [
+      `--${boundary}`,
+      'Content-Disposition: form-data; name="file"; filename="legacy.json"',
+      'Content-Type: application/json',
+      '',
+      '{}',
+      `--${boundary}--`,
+      '',
+    ].join('\r\n')
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/packs/import-bundle',
+      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+      payload,
+    })
+
+    expect(response.statusCode).toBe(400)
+    expect(response.json()).toEqual({
+      error: 'Pack imports must use a .friendstrivia bundle',
+    })
   })
 })

@@ -83,7 +83,7 @@ The host computer's firewall must allow inbound TCP traffic on port `3000`. Some
 
 Supported local audio formats are MP3, M4A, OGG, and WAV, up to 50 MB per file. Files copied directly into `content\songs` are indexed at server startup. Files uploaded through the media library are stored there automatically.
 
-Packs can be created in the editor or imported as JSON. See `content\packs\example.json` for the manifest shape. A pack contains ordered categories and clues:
+Packs contain ordered categories and clues:
 
 - `music_multiple_choice`: local audio, choices, correct answer, and optional accepted variants.
 - `music_free_text`: local audio, a correct answer, and accepted variants.
@@ -94,7 +94,7 @@ Keep packs in draft status until every music clue has a playable media asset and
 Use **Export pack + songs** to download a portable `.friendstrivia` bundle containing the pack and
 every local song referenced by its clues or answer reveals. On another FriendsTrivia computer,
 choose **Import pack** and select that bundle; its songs are copied into the local media library
-and all clue references are restored. Legacy metadata-only `.json` pack imports are still accepted.
+and all clue references are restored. Only `.friendstrivia` bundles are accepted for pack imports.
 
 ## Data and backup
 

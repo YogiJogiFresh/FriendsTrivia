@@ -174,10 +174,6 @@ export function deletePack(id: string): Promise<void> {
   return request(`/api/packs/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }
 
-export function importPack(manifest: unknown): Promise<ServerPackDetail> {
-  return request('/api/packs/import', json('POST', manifest))
-}
-
 export function importPackBundle(file: File): Promise<ServerPackDetail> {
   const formData = new FormData()
   formData.append('file', file)
