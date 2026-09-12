@@ -13,6 +13,8 @@ function findWorkspaceRoot(): string {
 }
 
 const workspaceRoot = findWorkspaceRoot()
+const isDevelopment = process.env.npm_lifecycle_event === 'dev'
+const port = Number(process.env.PORT ?? 3000)
 
 function resolveFromRoot(value: string): string {
   return path.isAbsolute(value) ? value : path.resolve(workspaceRoot, value)
@@ -21,7 +23,8 @@ function resolveFromRoot(value: string): string {
 export const config = {
   workspaceRoot,
   host: process.env.HOST ?? '0.0.0.0',
-  port: Number(process.env.PORT ?? 3000),
+  port,
+  joinPort: Number(process.env.JOIN_PORT ?? (isDevelopment ? 5173 : port)),
   publicUrl: process.env.PUBLIC_URL || undefined,
   databasePath: resolveFromRoot(process.env.DATABASE_PATH ?? './data/friends-trivia.db'),
   contentRoot: resolveFromRoot(process.env.CONTENT_ROOT ?? './content'),

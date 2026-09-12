@@ -66,7 +66,7 @@ export async function buildApp() {
     })
   }
   const rooms = new RoomRepository(database)
-  const joinBaseUrl = preferredJoinBaseUrl(config.publicUrl, config.port)
+  const joinBaseUrl = preferredJoinBaseUrl(config.publicUrl, config.joinPort)
   const engine = new GameEngine(database, rooms, joinBaseUrl)
   engine.recoverInterruptedGames()
   await registerPackRoutes(app, packs, (packId) => engine.preparePackDeletion(packId))
@@ -90,7 +90,7 @@ export async function buildApp() {
     name: 'FriendsTrivia',
     status: 'ok',
     timestamp: new Date().toISOString(),
-    joinUrl: preferredJoinBaseUrl(config.publicUrl, config.port),
+    joinUrl: preferredJoinBaseUrl(config.publicUrl, config.joinPort),
   }))
 
   const webDist = config.webDist

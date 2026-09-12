@@ -26,10 +26,20 @@ export type AckResult<T> = { ok: true; data: T } | { ok: false; error: string }
 /** Wraps a callback-ack socket emit in a Promise, rejecting on `{ ok: false }`. */
 export function emitWithAck<T = unknown>(event: string, payload: unknown): Promise<T> {
   return new Promise((resolve, reject) => {
-    getSocket().emit(event, payload, (result: AckResult<T>) => {
+    getSocket()
+      .timeout(10_000)
+      .emit(event, payload, (error: Error | null, result?: AckResult<T>) => {
+      if (error) {
+        reject(new Error('The game server did not respond. Check your connection and try again.'))
+        return
+      }
+      if (!result) {
+        reject(new Error('The game server returned an invalid response.'))
+        return
+      }
       if (result.ok) resolve(result.data)
       else reject(new Error(result.error))
-    })
+      })
   })
 }
 

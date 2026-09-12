@@ -114,6 +114,7 @@ Configuration can be changed in `.env`:
 |---|---:|---|
 | `HOST` | `0.0.0.0` | Interface on which the local server listens |
 | `PORT` | `3000` | HTTP and Socket.IO port |
+| `JOIN_PORT` | `5173` in development; otherwise `PORT` | Port used in generated player links |
 | `PUBLIC_URL` | detected | Override the URL encoded in room QR codes |
 | `DATABASE_PATH` | `./data/friends-trivia.db` | SQLite file location |
 | `CONTENT_ROOT` | `./content` | Root containing songs and manifests |

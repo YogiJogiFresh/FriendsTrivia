@@ -159,7 +159,7 @@ export function PlayPage() {
               variant="primary"
               size="lg"
               fullWidth
-              disabled={joining || Boolean(game?.room.teams.length && !teamDraft)}
+              disabled={joining}
             >
               {joining ? 'Joining…' : 'Join'}
             </Button>
