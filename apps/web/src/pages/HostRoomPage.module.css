@@ -78,6 +78,11 @@
   gap: var(--space-5);
 }
 
+.openDisplayButton {
+  margin-top: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
 .noticeText {
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);

@@ -1,0 +1,153 @@
+.dialog {
+  width: min(92vw, 54rem);
+  max-height: 90svh;
+  padding: 0;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: var(--shadow-lg);
+}
+
+.dialog::backdrop {
+  background: rgba(2, 4, 12, 0.82);
+}
+
+.panel {
+  display: grid;
+  gap: var(--space-5);
+  max-height: 90svh;
+  padding: var(--space-6);
+  overflow-y: auto;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.header h2 {
+  margin: var(--space-1) 0 0;
+}
+
+.eyebrow {
+  color: var(--color-amber);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.intro,
+.requirement,
+.instructions p,
+.notice {
+  margin: 0;
+}
+
+.intro,
+.instructions p {
+  color: var(--color-text-muted);
+}
+
+.handoff {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: center;
+}
+
+.qrFrame {
+  padding: var(--space-3);
+  border-radius: var(--radius-lg);
+  background: #fff;
+  line-height: 0;
+}
+
+.qrFrame svg {
+  width: min(180px, 42vw);
+  height: auto;
+}
+
+.linkPanel {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.linkPanel label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+}
+
+.linkPanel input {
+  width: 100%;
+  min-height: var(--touch-target-min);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-raised);
+  color: var(--color-text);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.notice {
+  color: var(--color-teal-strong);
+  font-size: var(--font-size-sm);
+}
+
+.instructions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.instructions section {
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+}
+
+.instructions h3 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-md);
+}
+
+.instructions p {
+  font-size: var(--font-size-sm);
+}
+
+.requirement {
+  padding: var(--space-3) var(--space-4);
+  border-left: 3px solid var(--color-amber);
+  background: var(--color-bg-raised);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+@media (max-width: 700px) {
+  .panel {
+    padding: var(--space-4);
+  }
+
+  .handoff,
+  .instructions {
+    grid-template-columns: 1fr;
+  }
+
+  .qrFrame {
+    justify-self: center;
+  }
+
+  .actions > * {
+    flex: 1 1 auto;
+  }
+}

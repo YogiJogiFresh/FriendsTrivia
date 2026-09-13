@@ -159,6 +159,14 @@ export function HostHomePage() {
                   <Button variant="danger" disabled={endingRoomCode === room.code} onClick={() => handleEndRoom(room)}>
                     {endingRoomCode === room.code ? 'Ending…' : 'End'}
                   </Button>
+                  <Button
+                    variant="secondary"
+                    href={`/display/${encodeURIComponent(room.code)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Display
+                  </Button>
                   <Button variant="primary" onClick={() => navigate(`/host/room/${room.code}`)}>
                     Rejoin
                   </Button>

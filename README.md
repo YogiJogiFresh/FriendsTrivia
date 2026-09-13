@@ -74,6 +74,26 @@ the release must include all three artifacts for automatic updates to work.
 5. Players scan the QR code or open the LAN URL, enter the four-character room code, and choose a team when teams are enabled.
 6. Start the game, select clues from the host control, and use the reveal/leaderboard controls between clues.
 
+### Casting the shared display
+
+From the live host room, choose **Cast display**. FriendsTrivia provides the LAN audience-display
+link, a QR code for handing it to another device, and instructions for the available casting
+method. The audience link opens only `/display/:roomCode`; it does not include host credentials or
+host controls.
+
+- **Chrome or Edge:** open the audience display in its own tab, use the browser's Cast command, and
+  cast that tab. The host-control tab remains usable and is not shown.
+- **Windows wireless display:** press Windows+K and use Extend mode, then move the audience window
+  to the TV. Mirroring the host monitor also mirrors the host controls.
+- **Mobile host:** scan the handoff QR code from a cast-capable computer or copy the audience link
+  to it. Mobile browsers cannot reliably open tab-casting controls.
+
+On the audience screen, choose **Prepare display** before the game. This unlocks audio and requests
+fullscreen where the browser permits it. Casting device selection remains a browser or operating
+system action; a local web page cannot automatically open the Chrome Cast or Miracast picker.
+Every participating device must be on the same local network and able to reach the advertised LAN
+address.
+
 In team games, every player's score contributes to their team total. Leaderboards rank teams and
 show each member's individual contribution beneath the team.
 
@@ -132,5 +152,10 @@ a provider API key.
 
 - **Phones cannot connect:** confirm the phone and host are on the same private network, try the IP URL printed by the server, and allow Node.js through Windows Firewall on private networks.
 - **Audio does not start:** click the audio readiness control on the shared display before starting. Browsers block autoplay until the page receives a user gesture.
+- **A TV cannot open the display:** confirm it is on the same Wi-Fi as the host and that the
+  advertised LAN URL opens on another device. Guest-network client isolation and Windows Firewall
+  can block cast receivers even when internet access works.
+- **Host controls appear on the TV:** cast only the audience display tab. For Miracast, use Extend
+  rather than Duplicate mode, or open the handoff link on another computer.
 - **The host page was refreshed:** reopen the room using its saved host token; the server remains authoritative and sends the current snapshot.
 - **The server restarted mid-game:** active games are restored in a paused state. Reconnect the host and resume when all players are back.

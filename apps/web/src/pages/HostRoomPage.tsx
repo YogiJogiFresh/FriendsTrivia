@@ -9,6 +9,7 @@ import {
   Badge,
   Button,
   Card,
+  CastDisplayDialog,
   CategoryBoard,
   ConnectionStatusPill,
   GameTimer,
@@ -37,6 +38,7 @@ export function HostRoomPage() {
   const [scorePlayerId, setScorePlayerId] = useState('')
   const [scoreDelta, setScoreDelta] = useState('10')
   const [scoreReason, setScoreReason] = useState('')
+  const [castDialogOpen, setCastDialogOpen] = useState(false)
 
   const currentClue = game?.clues.find((clue) => clue.id === game.currentClueId) ?? null
   const secondsRemaining = useCountdown(game?.room.deadline, currentClue?.timerSeconds ?? 0)
@@ -66,6 +68,7 @@ export function HostRoomPage() {
   }
 
   const { categories, clues, players, room } = game
+  const displayUrl = new URL(`/display/${encodeURIComponent(roomCode)}`, room.joinUrl).href
   const phase = room.phase
   const remainingClues = clues.filter(
     (clue) => !clue.used && clue.id !== game.currentClueId,
@@ -326,11 +329,19 @@ export function HostRoomPage() {
             <Button
               variant="primary"
               fullWidth
-              href={`/display/${roomCode}`}
+              onClick={() => setCastDialogOpen(true)}
+            >
+              Cast display
+            </Button>
+            <Button
+              className={styles.openDisplayButton}
+              variant="secondary"
+              fullWidth
+              href={displayUrl}
               target="_blank"
               rel="noreferrer"
             >
-              Open shared display
+              Open display
             </Button>
             <QrLobbyPanel
               roomCode={roomCode}
@@ -346,6 +357,12 @@ export function HostRoomPage() {
           </Card>
         </div>
       </div>
+      <CastDisplayDialog
+        displayUrl={displayUrl}
+        open={castDialogOpen}
+        roomCode={roomCode}
+        onClose={() => setCastDialogOpen(false)}
+      />
     </div>
   )
 }

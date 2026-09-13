@@ -41,6 +41,16 @@ export function DisplayPage() {
   const audioRef = useRef<HTMLAudioElement>(null)
   const [audioReady, setAudioReady] = useState(false)
   const [audioError, setAudioError] = useState<string | null>(null)
+  const [isFullscreen, setIsFullscreen] = useState(Boolean(document.fullscreenElement))
+  const [presentationNotice, setPresentationNotice] = useState<string | null>(null)
+
+  useEffect(() => {
+    function updateFullscreenState() {
+      setIsFullscreen(Boolean(document.fullscreenElement))
+    }
+    document.addEventListener('fullscreenchange', updateFullscreenState)
+    return () => document.removeEventListener('fullscreenchange', updateFullscreenState)
+  }, [])
 
   useEffect(() => {
     const audio = audioRef.current
@@ -107,9 +117,9 @@ export function DisplayPage() {
     }
   }, [currentClueId, gamePhase])
 
-  function enableAudio() {
+  async function startAudio() {
     const audio = audioRef.current
-    if (!audio) return
+    if (!audio) throw new Error('The audio player is unavailable.')
     const playingAudio =
       (gamePhase === 'ACCEPTING_ANSWERS' ||
         gamePhase === 'FINAL_QUESTION' ||
@@ -125,18 +135,51 @@ export function DisplayPage() {
     }
     audio.muted = false
     audio.currentTime = 0
-    void audio
-      .play()
-      .then(() => {
-        if (!playingAudio) {
-          audio.pause()
-          audio.currentTime = 0
-          audio.volume = 1
-        }
-        setAudioReady(true)
-        setAudioError(null)
-      })
-      .catch(() => setAudioError('Your browser blocked audio. Check site permissions and try again.'))
+    await audio.play()
+    if (!playingAudio) {
+      audio.pause()
+      audio.currentTime = 0
+      audio.volume = 1
+    }
+    setAudioReady(true)
+    setAudioError(null)
+  }
+
+  async function enableAudio() {
+    try {
+      await startAudio()
+    } catch {
+      setAudioReady(false)
+      setAudioError('Your browser blocked audio. Check site permissions and try again.')
+    }
+  }
+
+  async function prepareDisplay() {
+    const shouldPrepareAudio = !audioReady && gamePhase !== 'PAUSED'
+    const results = await Promise.allSettled([
+      shouldPrepareAudio ? startAudio() : Promise.resolve(),
+      document.fullscreenElement || !document.fullscreenEnabled
+        ? Promise.resolve()
+        : document.documentElement.requestFullscreen(),
+    ])
+    const audioPrepared = audioReady || (shouldPrepareAudio && results[0].status === 'fulfilled')
+    const fullscreenPrepared = Boolean(document.fullscreenElement)
+    setIsFullscreen(fullscreenPrepared)
+
+    if (shouldPrepareAudio && !audioPrepared) {
+      setAudioReady(false)
+      setAudioError('Your browser blocked audio. Check site permissions and try again.')
+    }
+
+    if (audioPrepared && fullscreenPrepared) {
+      setPresentationNotice('Audio and fullscreen are ready.')
+    } else if (audioPrepared) {
+      setPresentationNotice('Audio is ready. Use your browser controls if fullscreen is unavailable.')
+    } else if (fullscreenPrepared) {
+      setPresentationNotice('Fullscreen is ready, but audio still needs permission.')
+    } else {
+      setPresentationNotice('Use the audio and fullscreen controls in your browser, then try again.')
+    }
   }
 
   if (error) {
@@ -168,8 +211,14 @@ export function DisplayPage() {
         <span className={styles.brand}>FriendsTrivia</span>
         <div className={styles.topBarRight}>
           <ConnectionStatusPill status={game.connection} />
-          {game.room.phase !== 'LOBBY' && (!audioReady || audioError) ? (
-            <Button variant="primary" onClick={enableAudio}>
+          {game.room.phase !== 'LOBBY' && !isFullscreen ? (
+            <Button variant="primary" onClick={() => void prepareDisplay()}>
+              Prepare display
+            </Button>
+          ) : game.room.phase !== 'LOBBY' &&
+            game.room.phase !== 'PAUSED' &&
+            (!audioReady || audioError) ? (
+            <Button variant="primary" onClick={() => void enableAudio()}>
               Play audio
             </Button>
           ) : null}
@@ -196,9 +245,10 @@ export function DisplayPage() {
       {game.room.phase === 'LOBBY' ? (
         <div className={styles.main}>
           <QrLobbyPanel roomCode={game.room.code} joinUrl={game.room.joinUrl} locked={game.room.locked} />
-          <Button variant={audioReady ? 'secondary' : 'primary'} size="lg" onClick={enableAudio}>
-            {audioReady ? 'Audio ready' : 'Enable audio'}
+          <Button variant={audioReady ? 'secondary' : 'primary'} size="lg" onClick={() => void prepareDisplay()}>
+            {audioReady && isFullscreen ? 'Display ready' : 'Prepare display'}
           </Button>
+          {presentationNotice ? <p className={styles.presentationNotice} role="status">{presentationNotice}</p> : null}
           {audioError ? <p role="alert">{audioError}</p> : null}
           <RosterList players={game.players} />
         </div>
