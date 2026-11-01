@@ -1,6 +1,6 @@
 .layout {
   display: grid;
-  grid-template-columns: minmax(220px, 280px) 1fr;
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
   gap: var(--space-5);
   align-items: start;
 }
@@ -23,7 +23,7 @@
   justify-content: space-between;
   gap: var(--space-2);
   min-height: var(--touch-target-comfortable);
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-3);
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border);
   background: var(--color-surface);
@@ -33,6 +33,7 @@
 .categoryButtonActive {
   border-color: var(--color-teal);
   background: var(--color-surface-raised);
+  box-shadow: inset 3px 0 var(--color-teal);
 }
 
 .clueList {
@@ -160,6 +161,92 @@
 
 /* Pack detail / editor view */
 
+.editorHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.editorHeading {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.editorHeading h1 {
+  font-size: var(--font-size-2xl);
+  overflow-wrap: anywhere;
+}
+
+.editorHeading p,
+.helperText,
+.sectionIntro p,
+.packTools p {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  max-width: 72ch;
+}
+
+.sectionNav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: var(--space-5);
+}
+
+.sectionNav button {
+  min-height: var(--touch-target-comfortable);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 3px solid transparent;
+  color: var(--color-text-muted);
+  font-weight: var(--font-weight-medium);
+}
+
+.sectionNav button[aria-pressed='true'] {
+  color: var(--color-teal-strong);
+  border-bottom-color: var(--color-teal);
+}
+
+.sectionNav button:hover {
+  background: var(--color-surface);
+}
+
+.sectionIntro {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+}
+
+.categoryPanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.categoryPanel .panelHeader {
+  margin-bottom: 0;
+}
+
+.categoryCount,
+.limitHint {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+}
+
+.packTools {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--color-border);
+}
+
 .metaCard {
   display: flex;
   flex-direction: column;
@@ -187,6 +274,7 @@
   border: 1px solid var(--color-border);
   background: var(--color-surface);
   color: var(--color-text);
+  max-width: 100%;
 }
 
 .statusHint {
@@ -199,15 +287,15 @@
   flex: 1 1 auto;
   min-width: 0;
   text-align: left;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-height: var(--touch-target-min);
+  overflow-wrap: anywhere;
+  padding: var(--space-2) 0;
 }
 
 .removeButton {
   flex: 0 0 auto;
-  min-width: 32px;
-  min-height: 32px;
+  min-width: var(--touch-target-min);
+  min-height: var(--touch-target-min);
   border-radius: var(--radius-sm);
   color: var(--color-text-muted);
 }
@@ -224,16 +312,14 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  min-width: 0;
 }
 
 .narrowField {
-  flex: 0 0 120px;
+  width: 100%;
 }
 
 .clueCard {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
   overflow: hidden;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
@@ -242,9 +328,9 @@
 
 .categoryEditor {
   width: 100%;
+  min-width: 0;
 }
 
-.categorySummary,
 .clueSummary {
   display: grid;
   align-items: center;
@@ -254,12 +340,10 @@
   user-select: none;
 }
 
-.categorySummary::-webkit-details-marker,
 .clueSummary::-webkit-details-marker {
   display: none;
 }
 
-.categorySummary::before,
 .clueSummary::before {
   content: '▶';
   color: var(--color-text-muted);
@@ -267,19 +351,8 @@
   transition: transform var(--duration-fast) var(--ease-standard);
 }
 
-details[open] > .categorySummary::before,
 details[open] > .clueSummary::before {
   transform: rotate(90deg);
-}
-
-.categorySummary {
-  grid-template-columns: auto auto 1fr auto;
-  padding-bottom: var(--space-3);
-  color: var(--color-text-muted);
-}
-
-.categorySummary strong {
-  color: var(--color-text);
 }
 
 .categoryContent {
@@ -289,7 +362,7 @@ details[open] > .clueSummary::before {
 }
 
 .clueSummary {
-  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(90px, auto) minmax(0, 1fr);
   padding: var(--space-4);
   background: var(--color-surface-raised);
 }
@@ -300,11 +373,93 @@ details[open] > .clueSummary::before {
   white-space: nowrap;
 }
 
+.clueSummaryText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: var(--space-1);
+}
+
+.clueSummaryText > span {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.clueValue {
+  color: var(--color-amber-strong);
+  font-weight: var(--font-weight-medium);
+}
+
+.clueCard[open] {
+  border-color: var(--color-teal);
+}
+
+.clueListHeading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.clueEmptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-6) 0;
+}
+
+.clueEmptyState p {
+  color: var(--color-text-muted);
+  max-width: 60ch;
+}
+
 .clueContent {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
-  padding: 0 var(--space-4) var(--space-4);
+  padding: var(--space-5) var(--space-4) var(--space-4);
+}
+
+.clueSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+  margin: 0;
+  padding: var(--space-4) 0 0;
+  border: 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.clueSection legend {
+  padding-right: var(--space-3);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-medium);
+}
+
+.revealSection {
+  border-block: 1px solid var(--color-border);
+}
+
+.revealSection > summary {
+  cursor: pointer;
+  min-height: var(--touch-target-comfortable);
+  padding-block: var(--space-4);
+  font-weight: var(--font-weight-medium);
+}
+
+.revealContent {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-bottom: var(--space-5);
+}
+
+.clueFooter {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-3);
 }
 
 .finalQuestionToggle {
@@ -313,11 +468,18 @@ details[open] > .clueSummary::before {
   gap: var(--space-2);
   color: var(--color-amber);
   font-weight: var(--font-weight-bold);
+  min-height: var(--touch-target-min);
+}
+
+.finalQuestionToggle input {
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--color-amber);
 }
 
 .clueHeaderRow {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   align-items: end;
   gap: var(--space-3);
 }
@@ -336,6 +498,7 @@ details[open] > .clueSummary::before {
   border: 1px solid var(--color-border);
   background: var(--color-bg-raised);
   color: var(--color-text);
+  min-width: 0;
 }
 
 .priceGrid {
@@ -349,12 +512,7 @@ details[open] > .clueSummary::before {
   margin-top: var(--space-2);
 }
 
-.clueTypeBadgeRow {
-  display: flex;
-}
-
 .mediaCard {
-  margin-top: var(--space-5);
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
@@ -378,9 +536,8 @@ details[open] > .clueSummary::before {
 }
 
 .mediaName {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .mediaMeta {
@@ -404,4 +561,28 @@ details[open] > .clueSummary::before {
   display: flex;
   align-items: center;
   gap: var(--space-3);
+}
+
+@media (max-width: 480px) {
+  .sectionNav {
+    gap: 0;
+  }
+
+  .sectionNav button {
+    flex: 1 1 50%;
+    padding-inline: var(--space-2);
+    font-size: var(--font-size-sm);
+  }
+
+  .clueSummary {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .clueSummaryText {
+    grid-column: 2;
+  }
+
+  .mediaRow {
+    flex-wrap: wrap;
+  }
 }

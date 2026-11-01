@@ -5,6 +5,7 @@ import {
   normalizeFreeTextAnswer,
   scoreMusicAnswer,
   scorePriceAnswers,
+  createPriceAnswerScorer,
 } from './scoring.js'
 
 describe('free-text answer matching', () => {
@@ -82,6 +83,27 @@ describe('music scoring', () => {
 })
 
 describe('ranked price scoring', () => {
+  it('retains competition ranks and tie anchors across pages beyond 50 lifetime answers', () => {
+    const score = createPriceAnswerScorer({ clueId: 'price', targetPrice: 100, boardValue: 100 })
+    const firstPage = Array.from({ length: 50 }, (_, index) => score({ playerId: `p-${index}`, guess: 100 }))
+    const next = score({ playerId: 'replacement', guess: 90 })
+    expect(firstPage.every(({ rank }) => rank === 1)).toBe(true)
+    expect(next).toMatchObject({ rank: 51, points: 90 })
+    expect(score({ playerId: 'tie', guess: 90 })).toMatchObject({ rank: 51, points: 90 })
+    expect(score({ playerId: 'overbid', guess: 101 })).toMatchObject({ rank: null, points: 0 })
+  })
+  it('scores all 50 active players, not the old 20-player limit', () => {
+    const result = scorePriceAnswers({
+      clueId: 'clue-price', targetPrice: 100, boardValue: 1000,
+      answers: Array.from({ length: 50 }, (_, index) => ({ playerId: `player-${index}`, guess: 100 - index })),
+    })
+    expect(result.results).toHaveLength(50)
+    expect(result.results[49]).toMatchObject({ rank: 50, points: 510 })
+    expect(() => scorePriceAnswers({
+      clueId: 'clue-price', targetPrice: 100, boardValue: 1000,
+      answers: Array.from({ length: 51 }, (_, index) => ({ playerId: `player-${index}`, guess: index })),
+    })).toThrow('At most 50')
+  })
   it('uses closest-without-going-over, competition ranks, ties, and zeroed overbids', () => {
     const result = scorePriceAnswers({
       clueId: 'clue-price',

@@ -1,92 +1,34 @@
-import type Database from 'better-sqlite3'
-
+import type { MediaDeletion, MediaInput, MediaOwner, MediaStore, PageRequest, UploadReservation } from '../domain.js'
+import { domainFrom, type DomainSource } from '../sqliteStore.js'
 import { createId } from '../ids.js'
-
-export interface MediaAsset {
-  id: string
-  relativePath: string
-  originalName: string
-  mimeType: string
-  sizeBytes: number
-  durationSeconds: number | null
-  createdAt: string
-}
-
-interface MediaRow {
-  id: string
-  relative_path: string
-  original_name: string
-  mime_type: string
-  size_bytes: number
-  duration_seconds: number | null
-  created_at: string
-}
-
-function mapMedia(row: MediaRow): MediaAsset {
-  return {
-    id: row.id,
-    relativePath: row.relative_path,
-    originalName: row.original_name,
-    mimeType: row.mime_type,
-    sizeBytes: row.size_bytes,
-    durationSeconds: row.duration_seconds,
-    createdAt: row.created_at,
-  }
-}
+export type { MediaAsset } from '../domain.js'
 
 export class MediaRepository {
-  constructor(private readonly database: Database.Database) {}
-
-  list(): MediaAsset[] {
-    const rows = this.database
-      .prepare('SELECT * FROM media_assets ORDER BY created_at DESC')
-      .all() as MediaRow[]
-    return rows.map(mapMedia)
+  private readonly store: MediaStore
+  constructor(source: DomainSource | MediaStore) { this.store = 'reserveUpload' in source ? source : domainFrom(source).media }
+  async list() { return (await this.store.list()).items }
+  get(id: string) { return this.store.get(id) }
+  findByPath(path: string) { return this.store.findByPath(path) }
+  createIfMissing(input: MediaInput) { return this.store.createIfMissing(input) }
+  async create(input: MediaInput) {
+    const reservation = await this.reserveUpload(createId(), [input.relativePath])
+    const grown = await this.growReservation(reservation, input.sizeBytes)
+    return this.commitUploaded(grown, input, input.sizeBytes)
   }
-
-  get(id: string): MediaAsset | undefined {
-    const row = this.database.prepare('SELECT * FROM media_assets WHERE id = ?').get(id) as
-      | MediaRow
-      | undefined
-    return row ? mapMedia(row) : undefined
+  async remove(id: string) {
+    const ticket = await this.beginDelete(id, createId())
+    if (!ticket) return false
+    await this.finishDelete(ticket, true)
+    return true
   }
-
-  findByPath(relativePath: string): MediaAsset | undefined {
-    const row = this.database
-      .prepare('SELECT * FROM media_assets WHERE relative_path = ?')
-      .get(relativePath) as MediaRow | undefined
-    return row ? mapMedia(row) : undefined
-  }
-
-  create(input: {
-    relativePath: string
-    originalName: string
-    mimeType: string
-    sizeBytes: number
-  }): MediaAsset {
-    const id = createId()
-    this.database
-      .prepare(
-        `INSERT INTO media_assets
-         (id, relative_path, original_name, mime_type, size_bytes)
-         VALUES (?, ?, ?, ?, ?)`,
-      )
-      .run(id, input.relativePath, input.originalName, input.mimeType, input.sizeBytes)
-    const asset = this.get(id)
-    if (!asset) throw new Error('Media asset was not created')
-    return asset
-  }
-
-  createIfMissing(input: {
-    relativePath: string
-    originalName: string
-    mimeType: string
-    sizeBytes: number
-  }): MediaAsset {
-    return this.findByPath(input.relativePath) ?? this.create(input)
-  }
-
-  remove(id: string): boolean {
-    return this.database.prepare('DELETE FROM media_assets WHERE id = ?').run(id).changes > 0
-  }
+  reserveUpload(operationId: string, ownedKeys: string[]) { return this.store.reserveUpload(operationId, ownedKeys) }
+  growReservation(reservation: UploadReservation, totalBytes: number) { return this.store.growReservation(reservation, totalBytes) }
+  commitUploaded(reservation: UploadReservation, input: MediaInput, actualBytes: number, owner?: MediaOwner) { return this.store.commitUploaded(reservation, input, actualBytes, owner) }
+  abortUpload(reservation: UploadReservation, deletedKeys: string[]) { return this.store.abortUpload(reservation, deletedKeys) }
+  claim(owner: MediaOwner, ids: string[]) { return this.store.claim(owner, ids) }
+  releaseClaims(owner: MediaOwner, page?: PageRequest) { return this.store.releaseClaims(owner, page) }
+  completeOperation(owner: { kind: 'operation'; id: string }) { return this.store.completeOperation(owner) }
+  beginDelete(id: string, operationId: string) { return this.store.beginDelete(id, operationId) }
+  finishDelete(ticket: MediaDeletion, confirmedAbsent: boolean) { return this.store.finishDelete(ticket, confirmedAbsent) }
+  pendingCleanup(page?: PageRequest) { return this.store.pendingCleanup(page) }
 }

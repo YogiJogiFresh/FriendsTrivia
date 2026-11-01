@@ -4,6 +4,7 @@ dist/
 *.db
 *.db-shm
 *.db-wal
+*.db.backup-*
 coverage/
 playwright-report/
 test-results/

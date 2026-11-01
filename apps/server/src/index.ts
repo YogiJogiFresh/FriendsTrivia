@@ -8,4 +8,13 @@ const { app } = await buildApp()
 await app.listen({ host: config.host, port: config.port })
 
 const urls = config.publicUrl ? [config.publicUrl] : localNetworkUrls(config.joinPort)
-app.log.info({ urls }, 'FriendsTrivia is ready for local players')
+app.log.info({ urls }, 'FriendsTrivia is ready')
+
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+  process.once(signal, () => {
+    void app.close().catch((error: unknown) => {
+      app.log.error({ err: error }, 'Graceful shutdown failed')
+      process.exitCode = 1
+    })
+  })
+}

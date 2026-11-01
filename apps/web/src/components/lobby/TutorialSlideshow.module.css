@@ -1,0 +1,118 @@
+.slideshow {
+  display: grid;
+  gap: var(--space-4);
+  width: min(100%, 42rem);
+  padding: var(--space-5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-md);
+  text-align: left;
+}
+
+.header,
+.controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.header h2 {
+  margin: var(--space-1) 0 0;
+}
+
+.label,
+.eyebrow {
+  color: var(--color-amber);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.slide {
+  display: grid;
+  align-content: center;
+  gap: var(--space-3);
+  min-height: 13rem;
+  padding: var(--space-5);
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(circle at top right, rgba(255, 176, 32, 0.16), transparent 45%),
+    var(--color-surface-raised);
+}
+
+.slide h3,
+.slide p {
+  margin: 0;
+}
+
+.slide h3 {
+  font-size: var(--font-size-2xl);
+}
+
+.slide p {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-lg);
+}
+
+.slide strong {
+  color: var(--color-teal-strong);
+}
+
+.dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+.dot,
+.activeDot {
+  width: 0.75rem;
+  height: 0.75rem;
+  padding: 0;
+  border: 1px solid var(--color-text-muted);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  cursor: pointer;
+}
+
+.activeDot {
+  border-color: var(--color-amber);
+  background: var(--color-amber);
+  transform: scale(1.2);
+}
+
+.dot:focus-visible,
+.activeDot:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 3px;
+}
+
+@media (max-width: 560px) {
+  .slideshow {
+    padding: var(--space-4);
+  }
+
+  .slide {
+    min-height: 15rem;
+    padding: var(--space-4);
+  }
+
+  .controls {
+    flex-wrap: wrap;
+  }
+
+  .dots {
+    order: -1;
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .activeDot {
+    transform: none;
+  }
+}

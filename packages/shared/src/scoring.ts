@@ -102,8 +102,9 @@ function comparePlayerIds(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0
 }
 
-export function scorePriceAnswers(input: PriceScoreInput): PriceScoreResult {
-  const clueId = EntityIdSchema.parse(input.clueId)
+// Feed eligible guesses descending, followed by overbids; rank state survives page boundaries.
+export function createPriceAnswerScorer(input: Omit<PriceScoreInput, 'answers'>) {
+  EntityIdSchema.parse(input.clueId)
   if (!Number.isFinite(input.targetPrice) || input.targetPrice < 0) {
     throw new RangeError('targetPrice must be a non-negative finite number')
   }
@@ -118,11 +119,35 @@ export function scorePriceAnswers(input: PriceScoreInput): PriceScoreResult {
   if (!Number.isInteger(input.boardValue) || input.boardValue <= 0) {
     throw new RangeError('boardValue must be a positive integer')
   }
-  if (input.answers.length > 20) {
-    throw new RangeError('At most 20 price answers can be scored')
-  }
-
   const settings = PriceScoringSettingsSchema.parse(input.settings ?? {})
+  let eligibleCount = 0
+  let currentRank = 0
+  let currentTieDistance: number | undefined
+  return (rawAnswer: PriceAnswerForScoring): PriceScoreResult['results'][number] => {
+    const answer = PriceAnswerForScoringSchema.parse(rawAnswer)
+    const distanceFromTarget = Math.abs(input.targetPrice - answer.guess)
+    const overbid = answer.guess > input.targetPrice
+    if (overbid) return { ...answer, overbid, distanceFromTarget, rank: null, multiplier: 0, points: 0 }
+    eligibleCount++
+    if (currentTieDistance === undefined || Math.abs(distanceFromTarget - currentTieDistance) > settings.tieTolerance) {
+      currentRank = eligibleCount
+      currentTieDistance = distanceFromTarget
+    }
+    const scoringRange = input.targetPrice - minimumPrice
+    const multiplier = scoringRange === 0
+      ? distanceFromTarget === 0 ? 1 : 0
+      : Math.max(0, Math.min(1, 1 - distanceFromTarget / scoringRange))
+    return { ...answer, overbid, distanceFromTarget, rank: currentRank, multiplier,
+      points: roundPoints(input.boardValue * multiplier, settings.roundTo) }
+  }
+}
+
+export function scorePriceAnswers(input: PriceScoreInput): PriceScoreResult {
+  const clueId = EntityIdSchema.parse(input.clueId)
+  if (input.answers.length > 50) {
+    throw new RangeError('At most 50 price answers can be scored')
+  }
+  const scoreAnswer = createPriceAnswerScorer(input)
   const seenPlayerIds = new Set<string>()
   const eligible: RankedAnswer[] = []
   const overbids: RankedAnswer[] = []
@@ -153,43 +178,8 @@ export function scorePriceAnswers(input: PriceScoreInput): PriceScoreResult {
     (left, right) => left.guess - right.guess || comparePlayerIds(left.playerId, right.playerId),
   )
 
-  let currentRank = 0
-  let currentTieDistance: number | undefined
-  const rankedResults = eligible.map((answer, index) => {
-    if (
-      currentTieDistance === undefined ||
-      Math.abs(answer.distanceFromTarget - currentTieDistance) > settings.tieTolerance
-    ) {
-      currentRank = index + 1
-      currentTieDistance = answer.distanceFromTarget
-    }
-    const scoringRange = input.targetPrice - minimumPrice
-    const multiplier =
-      scoringRange === 0
-        ? answer.distanceFromTarget === 0
-          ? 1
-          : 0
-        : Math.max(0, Math.min(1, 1 - answer.distanceFromTarget / scoringRange))
-    return {
-      playerId: answer.playerId,
-      guess: answer.guess,
-      overbid: false,
-      distanceFromTarget: answer.distanceFromTarget,
-      rank: currentRank,
-      multiplier,
-      points: roundPoints(input.boardValue * multiplier, settings.roundTo),
-    }
-  })
-
-  const overbidResults = overbids.map((answer) => ({
-    playerId: answer.playerId,
-    guess: answer.guess,
-    overbid: true,
-    distanceFromTarget: answer.distanceFromTarget,
-    rank: null,
-    multiplier: 0,
-    points: 0,
-  }))
+  const rankedResults = eligible.map(({ playerId, guess }) => scoreAnswer({ playerId, guess }))
+  const overbidResults = overbids.map(({ playerId, guess }) => scoreAnswer({ playerId, guess }))
 
   return PriceScoreResultSchema.parse({
     kind: 'PRICE',

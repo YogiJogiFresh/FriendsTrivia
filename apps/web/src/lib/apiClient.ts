@@ -28,7 +28,7 @@ async function parseErrorBody(response: Response): Promise<string> {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response
   try {
-    response = await fetch(path, init)
+    response = await fetch(path, { ...init, credentials: 'same-origin' })
   } catch {
     throw new ApiError('Could not reach the FriendsTrivia server. Check your connection and try again.', 0)
   }

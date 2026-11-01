@@ -82,6 +82,10 @@ export interface RawSnapshot {
   joinUrl: string
   phase: GamePhase
   stateVersion: number
+  roomGeneration?: string
+  attempt?: number
+  window?: number
+  wagerGeneration?: number
   joiningLocked: boolean
   teams?: string[]
   deadline?: string
@@ -97,6 +101,16 @@ export interface RawSnapshot {
   results?: RawResult[]
   /** Present only on the host-authenticated `host:snapshot` channel. */
   submissions?: RawSubmission[]
+}
+
+export function expectedRoomContext(snapshot: RawSnapshot | null) {
+  return {
+    expectedStateVersion: snapshot?.stateVersion,
+    expectedRoomGeneration: snapshot?.roomGeneration,
+    expectedAttempt: snapshot?.attempt,
+    expectedWindow: snapshot?.window,
+    expectedWagerGeneration: snapshot?.wagerGeneration,
+  }
 }
 
 const ACCENT_TOKENS = [

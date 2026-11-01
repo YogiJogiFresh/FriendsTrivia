@@ -28,6 +28,9 @@ export interface GameSettings {
 }
 
 export interface RoomState {
+  attempt?: number | undefined
+  window?: number | undefined
+  wagerGeneration?: number | undefined
   phase: GamePhase
   previousPhase?: GamePhase | undefined
   activeClueId?: string | undefined
@@ -43,6 +46,8 @@ export interface RoomState {
 }
 
 export interface RoomRecord {
+  ref: import('../domain.js').RoomRef
+  revision: string
   id: string
   code: string
   packId: string

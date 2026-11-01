@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
+    "test": "vitest run",
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
@@ -24,6 +25,7 @@
     "@vitejs/plugin-react": "^4.7.0",
     "oxlint": "^1.79.0",
     "typescript": "~6.0.2",
-    "vite": "^6.4.3"
+    "vite": "^6.4.3",
+    "vitest": "^3.0.8"
   }
 }

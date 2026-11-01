@@ -1,0 +1,162 @@
+name: Azure build and readiness
+
+on:
+  push:
+    branches: [main]
+    paths: ['apps/**', 'packages/**', 'package.json', 'package-lock.json', 'tsconfig.base.json', 'infra/azure/**', 'scripts/Azure*', '.github/workflows/azure-deploy.yml']
+  workflow_dispatch:
+    inputs:
+      run_live_tests:
+        description: 'Run Cosmos and Blob SDK acceptance against approved, verified isolated targets'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: friends-trivia-azure-readiness
+  cancel-in-progress: false
+
+jobs:
+  infrastructure:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Parse scripts and check approval/isolation guards
+        shell: pwsh
+        run: ./scripts/AzureChecks.ps1
+      - name: Compile infrastructure without authentication
+        run: |
+          az bicep build --file infra/azure/main.bicep --stdout >/dev/null
+          az bicep build --file infra/azure/access.bicep --stdout >/dev/null
+
+  application:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    outputs:
+      artifact-id: ${{ steps.package-artifact.outputs.artifact-id }}
+      package-sha256: ${{ steps.package-checksum.outputs.sha256 }}
+    env:
+      FRIENDS_TRIVIA_MODE: local
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund && npm run desktop:install
+      - name: Check local and offline cloud implementations
+        run: npm run lint && npm run typecheck && npm test && npm run build
+      - name: Package Linux-native application without Azure credentials
+        run: node scripts/AzurePackage.mjs dist/cloud
+      - name: Smoke extracted artifact independently of checkout dependencies
+        run: |
+          artifact_root=$(mktemp -d "${RUNNER_TEMP}/friends-trivia-artifact-XXXXXX")
+          unzip -q dist/cloud.zip -d "$artifact_root"
+          cd "$artifact_root"
+          node "$GITHUB_WORKSPACE/scripts/AzureArtifactSmoke.mjs"
+      - id: package-checksum
+        run: echo "sha256=$(sha256sum dist/cloud.zip | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        id: package-artifact
+        with:
+          name: friends-trivia-linux-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist/cloud.zip
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+  isolated-live-tests:
+    if: github.ref == 'refs/heads/main' && ((github.event_name == 'workflow_dispatch' && inputs.run_live_tests) || (github.event_name == 'push' && vars.AZURE_DEPLOYMENT_ENABLED == 'approved-after-live-acceptance'))
+    needs: [infrastructure, application]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: azure-tests
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      COSMOS_ENDPOINT: ${{ vars.COSMOS_ENDPOINT }}
+      COSMOS_TEST_EXPECTED_ENDPOINT: ${{ vars.COSMOS_TEST_EXPECTED_ENDPOINT }}
+      COSMOS_TEST_ACCOUNT_RESOURCE_ID: ${{ vars.COSMOS_TEST_ACCOUNT_RESOURCE_ID }}
+      FRIENDS_TRIVIA_COSMOS_LIVE: ${{ vars.FRIENDS_TRIVIA_COSMOS_LIVE }}
+      COSMOS_TEST_TARGET_VERIFIED: ${{ vars.COSMOS_TEST_TARGET_VERIFIED }}
+      COSMOS_DATABASE: friends-trivia-tests
+      COSMOS_GAMES_CONTAINER: games
+      COSMOS_LIBRARY_CONTAINER: library
+      AZURE_STORAGE_ACCOUNT_URL: ${{ vars.AZURE_STORAGE_ACCOUNT_URL }}
+      AZURE_STORAGE_TEST_EXPECTED_ENDPOINT: ${{ vars.AZURE_STORAGE_TEST_EXPECTED_ENDPOINT }}
+      AZURE_STORAGE_TEST_ACCOUNT_RESOURCE_ID: ${{ vars.AZURE_STORAGE_TEST_ACCOUNT_RESOURCE_ID }}
+      FRIENDS_TRIVIA_BLOB_LIVE: ${{ vars.FRIENDS_TRIVIA_BLOB_LIVE }}
+      BLOB_TEST_TARGET_VERIFIED: ${{ vars.BLOB_TEST_TARGET_VERIFIED }}
+      AZURE_STORAGE_CONTAINER: songs-tests
+      FRIENDS_TRIVIA_MODE: cloud
+      PUBLIC_URL: https://localhost
+      FRIENDS_TRIVIA_TEST_RUN_ID: ci-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci && npm run build --workspace @friends-trivia/shared && npm run build --workspace @friends-trivia/server
+      - name: Check explicit approval and verified account gates before credentials
+        shell: pwsh
+        run: |
+          ./scripts/AzureTestTarget.ps1 -ValidateTarget
+          ./scripts/AzureBlobTestTarget.ps1 -ValidateTarget
+      - uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2.3.1
+        with:
+          client-id: ${{ vars.AZURE_TEST_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: '299e641c-a5ad-4736-a74e-31ee5da9aef6'
+      - name: Run guarded Cosmos SDK acceptance
+        shell: pwsh
+        run: ./scripts/AzureTestTarget.ps1 -Run
+      - name: Run guarded private Blob streaming acceptance
+        shell: pwsh
+        run: ./scripts/AzureBlobTestTarget.ps1 -Run
+
+  production:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.AZURE_DEPLOYMENT_ENABLED == 'approved-after-live-acceptance'
+    needs: [application, isolated-live-tests]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: azure-production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      FRIENDS_TRIVIA_RELEASE_APPROVED: ${{ vars.FRIENDS_TRIVIA_RELEASE_APPROVED }}
+      AZURE_APP_NAME: ${{ vars.AZURE_APP_NAME }}
+      EXPECTED_PACKAGE_SHA256: ${{ needs.application.outputs.package-sha256 }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          artifact-ids: ${{ needs.application.outputs.artifact-id }}
+          merge-multiple: true
+          path: dist
+      - name: Check protected release gate and artifact integrity before credentials
+        shell: pwsh
+        run: |
+          if ($env:FRIENDS_TRIVIA_RELEASE_APPROVED -cne 'approved-after-live-acceptance') {
+            throw 'Production release has not been explicitly approved.'
+          }
+          if ($env:AZURE_APP_NAME -notmatch '^[a-zA-Z0-9][a-zA-Z0-9-]{1,58}[a-zA-Z0-9]$') {
+            throw 'A verified production App Service name is required.'
+          }
+          if ($env:EXPECTED_PACKAGE_SHA256 -notmatch '^[a-fA-F0-9]{64}$' -or
+              (Get-FileHash -LiteralPath 'dist\cloud.zip' -Algorithm SHA256).Hash -ine $env:EXPECTED_PACKAGE_SHA256) {
+            throw 'Linux package checksum does not match the tested build.'
+          }
+      - uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2.3.1
+        with:
+          client-id: ${{ vars.AZURE_DEPLOY_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: '299e641c-a5ad-4736-a74e-31ee5da9aef6'
+      - name: Deploy the tested Linux artifact and check public health
+        shell: pwsh
+        run: ./scripts/AzureDeploy.ps1 -AppName $env:AZURE_APP_NAME -Artifact dist\cloud.zip -Deploy -ReleaseApproved

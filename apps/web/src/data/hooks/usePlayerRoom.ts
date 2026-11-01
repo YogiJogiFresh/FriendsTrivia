@@ -5,6 +5,7 @@ import { clearPlayerIdentity, getPlayerIdentity, savePlayerIdentity } from '../.
 import {
   categoriesFromBoard,
   cluesFromSnapshot,
+  expectedRoomContext,
   leaderboardFromPlayers,
   ownResultFromSnapshot,
   playersFromSnapshot,
@@ -166,7 +167,7 @@ export function usePlayerRoom(roomCode: string): PlayerRoomResult {
       setSubmitting(true)
       setSubmitError(null)
       try {
-        await emitWithAck('player:answer', { answer, expectedStateVersion: snapshot?.stateVersion })
+        await emitWithAck('player:answer', { answer, ...expectedRoomContext(snapshot) })
       } catch (error) {
         setSubmitError(error instanceof Error ? error.message : 'Unable to submit your answer')
         throw error
@@ -174,7 +175,7 @@ export function usePlayerRoom(roomCode: string): PlayerRoomResult {
         setSubmitting(false)
       }
     },
-    [snapshot?.stateVersion],
+    [snapshot],
   )
 
   const submitWager = useCallback(
@@ -182,7 +183,7 @@ export function usePlayerRoom(roomCode: string): PlayerRoomResult {
       setSubmitting(true)
       setSubmitError(null)
       try {
-        await emitWithAck('player:wager', { amount, expectedStateVersion: snapshot?.stateVersion })
+        await emitWithAck('player:wager', { amount, ...expectedRoomContext(snapshot) })
       } catch (error) {
         setSubmitError(error instanceof Error ? error.message : 'Unable to submit your wager')
         throw error
@@ -190,7 +191,7 @@ export function usePlayerRoom(roomCode: string): PlayerRoomResult {
         setSubmitting(false)
       }
     },
-    [snapshot?.stateVersion],
+    [snapshot],
   )
 
   const submitSpecialVote = useCallback(
@@ -200,6 +201,7 @@ export function usePlayerRoom(roomCode: string): PlayerRoomResult {
       try {
         await emitWithAck('player:special-vote', {
           playerId: targetPlayerId,
+          ...expectedRoomContext(snapshot),
         })
       } catch (error) {
         setSubmitError(error instanceof Error ? error.message : 'Unable to submit your vote')
@@ -208,7 +210,7 @@ export function usePlayerRoom(roomCode: string): PlayerRoomResult {
         setSubmitting(false)
       }
     },
-    [],
+    [snapshot],
   )
 
   const game: GameState | null = snapshot

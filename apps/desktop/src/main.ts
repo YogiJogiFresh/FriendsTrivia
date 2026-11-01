@@ -40,6 +40,7 @@ async function startServer(): Promise<string> {
   if (isDevelopment) return 'http://localhost:5173'
 
   const userData = app.getPath('userData')
+  process.env.FRIENDS_TRIVIA_MODE = 'local'
   process.env.APP_ROOT = process.resourcesPath
   process.env.DATABASE_PATH = path.join(userData, 'data', 'friends-trivia.db')
   process.env.CONTENT_ROOT = path.join(userData, 'content')

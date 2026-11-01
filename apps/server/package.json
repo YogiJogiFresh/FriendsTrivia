@@ -11,6 +11,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@azure/cosmos": "^4.10.1",
+    "@azure/identity": "^4.13.3",
+    "@azure/storage-blob": "^12.34.0",
     "@fastify/helmet": "^13.0.1",
     "@fastify/multipart": "^9.0.3",
     "@fastify/rate-limit": "^10.2.1",

@@ -6,7 +6,7 @@
   "author": "YogiJogiFresh",
   "main": "dist/main.cjs",
   "scripts": {
-    "build:main": "esbuild src/main.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/main.cjs --external:electron --external:electron-updater --external:better-sqlite3 --external:@fastify/helmet --external:@fastify/multipart --external:@fastify/rate-limit --external:@fastify/static --external:dotenv --external:fastify --external:socket.io",
+    "build:main": "esbuild src/main.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/main.cjs --external:electron --external:electron-updater --external:better-sqlite3 --external:@fastify/helmet --external:@fastify/multipart --external:@fastify/rate-limit --external:@fastify/static --external:dotenv --external:fastify --external:socket.io --external:fflate --external:@azure/cosmos --external:@azure/identity --external:@azure/storage-blob",
     "rebuild:native": "cd node_modules/better-sqlite3 && prebuild-install --runtime electron --target 33.4.11 --arch x64",
     "dev": "npm run build:main && electron .",
     "build": "npm run build:main && npm run rebuild:native && electron-builder",
@@ -21,6 +21,7 @@
     "dotenv": "^16.4.7",
     "electron-updater": "^6.8.3",
     "fastify": "^5.2.1",
+    "fflate": "^0.8.3",
     "socket.io": "^4.8.1"
   },
   "devDependencies": {

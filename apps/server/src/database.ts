@@ -3,7 +3,7 @@ import path from 'node:path'
 
 import Database from 'better-sqlite3'
 
-const migrations = [
+export const migrations = [
   `
     CREATE TABLE packs (
       id TEXT PRIMARY KEY,
@@ -175,6 +175,36 @@ const migrations = [
   `
     ALTER TABLE players ADD COLUMN team_name TEXT;
   `,
+  `
+    ALTER TABLE rooms ADD COLUMN revision INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE packs ADD COLUMN revision INTEGER NOT NULL DEFAULT 1;
+    CREATE TABLE domain_receipts (
+      room_id TEXT NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+      operation_id TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      PRIMARY KEY(room_id, operation_id)
+    );
+    CREATE TABLE round_results (
+      room_id TEXT NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+      clue_id TEXT NOT NULL,
+      attempt INTEGER NOT NULL,
+      result_json TEXT NOT NULL,
+      invalidated TEXT,
+      PRIMARY KEY(room_id, clue_id, attempt)
+    );
+    CREATE TABLE result_chunks (
+      room_id TEXT NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+      result_id TEXT NOT NULL,
+      chunk_index INTEGER NOT NULL,
+      value_json TEXT NOT NULL,
+      PRIMARY KEY(room_id, result_id, chunk_index)
+    );
+    CREATE TABLE media_operations (
+      id TEXT PRIMARY KEY,
+      kind TEXT NOT NULL,
+      value_json TEXT NOT NULL
+    );
+  `,
 ] as const
 
 export function openDatabase(databasePath: string): Database.Database {
@@ -185,7 +215,18 @@ export function openDatabase(databasePath: string): Database.Database {
   database.pragma('foreign_keys = ON')
   database.pragma('busy_timeout = 5000')
 
+  try {
+    migrateDatabase(database)
+    return database
+  } catch (error) {
+    database.close()
+    throw error
+  }
+}
+
+export function migrateDatabase(database: Database.Database): void {
   const currentVersion = database.pragma('user_version', { simple: true }) as number
+  if (currentVersion > migrations.length) throw new Error('Unsupported local database version')
   for (let index = currentVersion; index < migrations.length; index += 1) {
     const migration = migrations[index]
     if (!migration) {
@@ -197,6 +238,4 @@ export function openDatabase(databasePath: string): Database.Database {
       database.pragma(`user_version = ${index + 1}`)
     })()
   }
-
-  return database
 }

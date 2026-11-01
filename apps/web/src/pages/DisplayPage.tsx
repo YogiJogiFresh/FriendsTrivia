@@ -15,6 +15,7 @@ import {
   QrLobbyPanel,
   ReconnectBanner,
   RosterList,
+  TutorialSlideshow,
 } from '../components'
 import styles from './DisplayPage.module.css'
 
@@ -244,13 +245,33 @@ export function DisplayPage() {
 
       {game.room.phase === 'LOBBY' ? (
         <div className={styles.main}>
-          <QrLobbyPanel roomCode={game.room.code} joinUrl={game.room.joinUrl} locked={game.room.locked} />
-          <Button variant={audioReady ? 'secondary' : 'primary'} size="lg" onClick={() => void prepareDisplay()}>
-            {audioReady && isFullscreen ? 'Display ready' : 'Prepare display'}
-          </Button>
-          {presentationNotice ? <p className={styles.presentationNotice} role="status">{presentationNotice}</p> : null}
-          {audioError ? <p role="alert">{audioError}</p> : null}
-          <RosterList players={game.players} />
+          <div className={styles.lobbyLayout}>
+            <div className={styles.joinPanel}>
+              <QrLobbyPanel
+                roomCode={game.room.code}
+                joinUrl={game.room.joinUrl}
+                locked={game.room.locked}
+              />
+              <Button
+                variant={audioReady ? 'secondary' : 'primary'}
+                size="lg"
+                onClick={() => void prepareDisplay()}
+              >
+                {audioReady && isFullscreen ? 'Display ready' : 'Prepare display'}
+              </Button>
+              {presentationNotice ? (
+                <p className={styles.presentationNotice} role="status">
+                  {presentationNotice}
+                </p>
+              ) : null}
+              {audioError ? <p role="alert">{audioError}</p> : null}
+            </div>
+            <TutorialSlideshow />
+          </div>
+          <div className={styles.lobbyRoster}>
+            <h2>Players ({game.players.length})</h2>
+            <RosterList players={game.players} />
+          </div>
         </div>
       ) : null}
 

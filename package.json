@@ -16,7 +16,7 @@
     "dev": "concurrently -k -n shared,server,web -c yellow,cyan,magenta \"npm run dev -w @friends-trivia/shared\" \"npm run dev -w @friends-trivia/server\" \"npm run dev -w @friends-trivia/web\"",
     "lint": "npm run lint --workspaces --if-present",
     "start": "npm run start -w @friends-trivia/server",
-    "test": "npm run build -w @friends-trivia/shared && npm run test -w @friends-trivia/shared && npm run test -w @friends-trivia/server",
+    "test": "npm run build -w @friends-trivia/shared && npm run test -w @friends-trivia/shared && npm run test -w @friends-trivia/server && npm run test -w @friends-trivia/web",
     "typecheck": "npm run build -w @friends-trivia/shared && npm run typecheck -w @friends-trivia/server && npm run typecheck -w @friends-trivia/web && npm --prefix apps/desktop run typecheck"
   },
   "engines": {

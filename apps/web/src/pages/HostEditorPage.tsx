@@ -26,7 +26,8 @@ import type {
   ServerPackDetail,
   GifProviderStatus,
 } from '../lib/apiClient'
-import { Badge, Button, Card, GifPicker, TextareaField, TextField } from '../components'
+import { categoriesFromBoard, cluesFromSnapshot } from '../lib/snapshot'
+import { Badge, Button, Card, CategoryBoard, GifPicker, TextareaField, TextField } from '../components'
 import styles from './HostEditorPage.module.css'
 
 const clueTypeOptions: Array<{ value: ServerClueType; label: string }> = [
@@ -153,6 +154,8 @@ export function HostEditorPage() {
   const [packLoading, setPackLoading] = useState(false)
   const [packLoadError, setPackLoadError] = useState<string | null>(null)
   const [selectedCategoryKey, setSelectedCategoryKey] = useState<string | null>(null)
+  const [selectedClueKey, setSelectedClueKey] = useState<string | null>(null)
+  const [editorSection, setEditorSection] = useState<'details' | 'categories' | 'media' | 'preview'>('categories')
 
   const [creatingPack, setCreatingPack] = useState(false)
   const [newPackTitle, setNewPackTitle] = useState('')
@@ -195,6 +198,8 @@ export function HostEditorPage() {
         const editable = toEditablePack(detail)
         setPack(editable)
         setSelectedCategoryKey(editable.categories[0]?.key ?? null)
+        setSelectedClueKey(null)
+        setEditorSection('categories')
       })
       .catch((err: unknown) => {
         if (!cancelled) setPackLoadError(err instanceof Error ? err.message : 'Could not load this pack.')
@@ -274,13 +279,13 @@ export function HostEditorPage() {
     setSaveError(null)
     setSaveSuccess(false)
     try {
+      const categoryIndex = pack.categories.findIndex((category) => category.key === selectedCategoryKey)
+      const clueIndex = pack.categories[categoryIndex]?.clues.findIndex((clue) => clue.key === selectedClueKey) ?? -1
       const updated = await savePack(pack.id, packInputFromState(pack))
       const editable = toEditablePack(updated)
       setPack(editable)
-      setSelectedCategoryKey((current) => {
-        if (current && editable.categories.some((category) => category.key === current)) return current
-        return editable.categories[0]?.key ?? null
-      })
+      setSelectedCategoryKey(editable.categories[categoryIndex]?.key ?? editable.categories[0]?.key ?? null)
+      setSelectedClueKey(editable.categories[categoryIndex]?.clues[clueIndex]?.key ?? null)
       refetchPacks()
       setSaveSuccess(true)
       window.setTimeout(() => setSaveSuccess(false), 3000)
@@ -342,11 +347,11 @@ export function HostEditorPage() {
           clues: category.clues.map((clue) =>
             clue.mediaAssetId === asset.id || clue.revealMediaAssetId === asset.id
               ? {
-                  ...clue,
-                  mediaAssetId: clue.mediaAssetId === asset.id ? null : clue.mediaAssetId,
-                  revealMediaAssetId:
-                    clue.revealMediaAssetId === asset.id ? null : clue.revealMediaAssetId,
-                }
+                ...clue,
+                mediaAssetId: clue.mediaAssetId === asset.id ? null : clue.mediaAssetId,
+                revealMediaAssetId:
+                  clue.revealMediaAssetId === asset.id ? null : clue.revealMediaAssetId,
+              }
               : clue,
           ),
         })),
@@ -370,6 +375,7 @@ export function HostEditorPage() {
     const key = makeLocalKey('category')
     updateCategories((categories) => [...categories, { key, title: 'New category', clues: [] }])
     setSelectedCategoryKey(key)
+    setSelectedClueKey(null)
   }
 
   function handleRenameCategory(categoryKey: string, title: string) {
@@ -384,13 +390,14 @@ export function HostEditorPage() {
   }
 
   function handleAddClue(categoryKey: string) {
+    const key = makeLocalKey('clue')
     updateCategories((categories) =>
       categories.map((category) => {
         if (category.key !== categoryKey) return category
         const lastValue = category.clues[category.clues.length - 1]?.boardValue ?? 0
         const type: ServerClueType = 'music_free_text'
         const newClue: EditableClue = {
-          key: makeLocalKey('clue'),
+          key,
           type,
           boardValue: lastValue + 100,
           prompt: '',
@@ -403,6 +410,8 @@ export function HostEditorPage() {
         return { ...category, clues: [...category.clues, newClue] }
       }),
     )
+    setSelectedClueKey(key)
+    window.requestAnimationFrame(() => document.getElementById(`clue-prompt-${key}`)?.focus())
   }
 
   function updateClue(categoryKey: string, clueKey: string, patch: Partial<EditableClue>) {
@@ -441,6 +450,7 @@ export function HostEditorPage() {
           : category,
       ),
     )
+    setSelectedClueKey((current) => current === clueKey ? null : current)
   }
 
   // ---- Pack list view ----------------------------------------------------
@@ -561,489 +571,606 @@ export function HostEditorPage() {
 
   const selectedCategory = pack.categories.find((category) => category.key === selectedCategoryKey) ?? null
   const musicMediaAssets = media ?? []
+  const previewBoard = pack.categories.flatMap((category, categoryPosition) =>
+    category.clues.flatMap((clue, cluePosition) => clue.finalQuestion ? [] : [{
+      categoryId: category.key,
+      categoryTitle: category.title || 'Untitled category',
+      categoryPosition,
+      clueId: clue.key,
+      boardValue: clue.boardValue,
+      cluePosition,
+      clueType: clue.type,
+    }]),
+  )
 
   return (
     <div>
-      <div className={styles.panelHeader}>
+      <div className={styles.editorHeader}>
         <Button variant="secondary" onClick={() => setSelectedPackId(null)}>
           ← Back to packs
         </Button>
+        <div className={styles.editorHeading}>
+          <h1>{pack.title || 'Untitled pack'}</h1>
+          <p>{pack.categories.length} categories / {pack.categories.reduce((count, category) => count + category.clues.length, 0)} clues</p>
+        </div>
         <div className={styles.headerActions}>
           {saveError ? (
             <span role="alert" className={styles.errorText}>
               {saveError}
             </span>
           ) : null}
-          {saveSuccess ? <Badge tone="success">Saved</Badge> : null}
-          <label
-            className={styles.exportOption}
-            title="Compresses the bundle and stores byte-identical songs only once. Original audio quality is preserved."
-          >
-            <input
-              type="checkbox"
-              checked={optimizedExport}
-              onChange={(event) => setOptimizedExport(event.target.checked)}
-            />
-            Optimized export <span aria-hidden="true">ⓘ</span>
-          </label>
-          <Button
-            variant="secondary"
-            href={packBundleExportUrl(pack.id, optimizedExport)}
-            download
-          >
-            Export pack + songs
-          </Button>
-          <Button variant="danger" onClick={handleDeletePack} disabled={deletingPack}>
-            {deletingPack ? 'Deleting…' : 'Delete pack'}
-          </Button>
+          {saveSuccess ? <span role="status"><Badge tone="success">Saved</Badge></span> : null}
           <Button variant="primary" onClick={handleSave} disabled={saving}>
             {saving ? 'Saving…' : 'Save changes'}
           </Button>
         </div>
       </div>
 
-      <Card className={styles.metaCard}>
-        <TextField
-          label="Pack title"
-          value={pack.title}
-          onChange={(event) => updatePack({ title: event.target.value })}
-        />
-        <TextareaField
-          label="Description"
-          value={pack.description}
-          onChange={(event) => updatePack({ description: event.target.value })}
-        />
-        <div className={styles.statusRow}>
-          <label className={styles.statusLabel} htmlFor="pack-status">
-            Status
-          </label>
-          <select
-            id="pack-status"
-            className={styles.statusSelect}
-            value={pack.status}
-            onChange={(event) => updatePack({ status: event.target.value as EditablePack['status'] })}
-          >
-            <option value="draft">Draft</option>
-            <option value="ready">Ready (can be launched)</option>
-            <option value="archived">Archived</option>
-          </select>
-          <span className={styles.statusHint}>
-            Marking a pack &quot;ready&quot; requires every music clue to have a song and a correct answer, and every
-            price clue to have valid min/max/target values.
-          </span>
-        </div>
-      </Card>
+      <nav className={styles.sectionNav} aria-label="Pack editor sections">
+        <button type="button" aria-pressed={editorSection === 'details'} aria-controls="pack-details" onClick={() => setEditorSection('details')}>
+          Pack details
+        </button>
+        <button type="button" aria-pressed={editorSection === 'categories'} aria-controls="pack-categories" onClick={() => setEditorSection('categories')}>
+          Categories &amp; clues
+        </button>
+        <button type="button" aria-pressed={editorSection === 'media'} aria-controls="pack-media" onClick={() => setEditorSection('media')}>
+          Media library
+        </button>
+        <button type="button" aria-pressed={editorSection === 'preview'} aria-controls="pack-preview" onClick={() => setEditorSection('preview')}>
+          Board preview
+        </button>
+      </nav>
 
-      <div className={styles.layout}>
-        <Card>
-          <div className={styles.panelHeader}>
-            <h2>Categories</h2>
+      <section id="pack-details" hidden={editorSection !== 'details'} aria-labelledby="pack-details-heading">
+        <Card className={styles.metaCard}>
+          <div className={styles.sectionIntro}>
+            <h2 id="pack-details-heading">Pack details</h2>
+            <p>Name your pack and choose when it is ready to play.</p>
           </div>
-          <div className={styles.categoryList}>
-            {pack.categories.map((category) => (
-              <div
-                key={category.key}
-                className={[styles.categoryButton, category.key === selectedCategoryKey ? styles.categoryButtonActive : '']
-                  .filter(Boolean)
-                  .join(' ')}
+          <TextField
+            label="Pack title"
+            value={pack.title}
+            onChange={(event) => updatePack({ title: event.target.value })}
+          />
+          <TextareaField
+            label="Description"
+            value={pack.description}
+            onChange={(event) => updatePack({ description: event.target.value })}
+          />
+          <div className={styles.statusRow}>
+            <label className={styles.statusLabel} htmlFor="pack-status">
+              Status
+            </label>
+            <select
+              id="pack-status"
+              className={styles.statusSelect}
+              value={pack.status}
+              onChange={(event) => updatePack({ status: event.target.value as EditablePack['status'] })}
+              aria-describedby="pack-status-hint"
+            >
+              <option value="draft">Draft</option>
+              <option value="ready">Ready (can be launched)</option>
+              <option value="archived">Archived</option>
+            </select>
+            <span id="pack-status-hint" className={styles.statusHint}>
+              Marking a pack &quot;ready&quot; requires every music clue to have a song and a correct answer, and every
+              price clue to have valid min/max/target values.
+            </span>
+          </div>
+          <div className={styles.packTools}>
+            <h3>Export and manage</h3>
+            <p>Exports include the last saved version of your pack. Save changes before downloading.</p>
+            <div className={styles.headerActions}>
+              <label
+                className={styles.exportOption}
+                title="Compresses the bundle and stores byte-identical songs only once. Original audio quality is preserved."
               >
-                <button
-                  type="button"
-                  className={styles.categoryButtonLabel}
-                  onClick={() => setSelectedCategoryKey(category.key)}
-                  aria-pressed={category.key === selectedCategoryKey}
-                >
-                  {category.title || 'Untitled category'}
-                </button>
-                <Badge tone="neutral">{category.clues.length}</Badge>
-                <button
-                  type="button"
-                  className={styles.removeButton}
-                  onClick={() => handleDeleteCategory(category.key)}
-                  aria-label={`Delete category ${category.title}`}
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
-            {pack.categories.length === 0 ? <p>No categories yet.</p> : null}
+                <input
+                  type="checkbox"
+                  checked={optimizedExport}
+                  onChange={(event) => setOptimizedExport(event.target.checked)}
+                />
+                Optimized export <span aria-hidden="true">ⓘ</span>
+              </label>
+              <Button
+                variant="secondary"
+                href={packBundleExportUrl(pack.id, optimizedExport)}
+                download
+              >
+                Export pack + songs
+              </Button>
+              <Button variant="danger" onClick={handleDeletePack} disabled={deletingPack}>
+                {deletingPack ? 'Deleting…' : 'Delete pack'}
+              </Button>
+            </div>
           </div>
-          <Button variant="secondary" fullWidth onClick={handleAddCategory} disabled={pack.categories.length >= 12}>
-            + Add category
-          </Button>
         </Card>
+      </section>
 
-        <Card>
-          {selectedCategory ? (
-            <details open className={styles.categoryEditor}>
-              <summary className={styles.categorySummary}>
-                <span>Category</span>
-                <strong>{selectedCategory.title || 'Untitled category'}</strong>
-                <Badge tone="neutral">{selectedCategory.clues.length} clues</Badge>
-              </summary>
+      <section id="pack-categories" hidden={editorSection !== 'categories'} aria-labelledby="pack-categories-heading">
+        <div className={styles.sectionIntro}>
+          <h2 id="pack-categories-heading">Categories &amp; clues</h2>
+          <p>Choose a category, then open a clue to work on its question and answer.</p>
+        </div>
+        <div className={styles.layout}>
+          <Card className={styles.categoryPanel}>
+            <div className={styles.panelHeader}>
+              <h3>Categories</h3>
+              <span className={styles.limitHint}>{pack.categories.length} / 12</span>
+            </div>
+            <div className={styles.categoryList}>
+              {pack.categories.map((category) => (
+                <div
+                  key={category.key}
+                  className={[styles.categoryButton, category.key === selectedCategoryKey ? styles.categoryButtonActive : '']
+                    .filter(Boolean)
+                    .join(' ')}
+                >
+                  <button
+                    type="button"
+                    className={styles.categoryButtonLabel}
+                    onClick={() => {
+                      setSelectedCategoryKey(category.key)
+                      setSelectedClueKey(null)
+                    }}
+                    aria-pressed={category.key === selectedCategoryKey}
+                  >
+                    {category.title || 'Untitled category'}
+                  </button>
+                  <span className={styles.categoryCount}>{category.clues.length} clues</span>
+                  <button
+                    type="button"
+                    className={styles.removeButton}
+                    onClick={() => handleDeleteCategory(category.key)}
+                    aria-label={`Delete category ${category.title}`}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+              {pack.categories.length === 0 ? <p className={styles.helperText}>Add a category to give your clues a home.</p> : null}
+            </div>
+            <Button variant="secondary" fullWidth onClick={handleAddCategory} disabled={pack.categories.length >= 12}>
+              + Add category
+            </Button>
+          </Card>
+
+          <Card className={styles.categoryEditor}>
+            {selectedCategory ? (
               <div className={styles.categoryContent}>
                 <div className={styles.panelHeader}>
-                <TextField
-                  label="Category title"
-                  value={selectedCategory.title}
-                  onChange={(event) => handleRenameCategory(selectedCategory.key, event.target.value)}
-                  className={styles.categoryTitleField}
-                />
-                <Button
-                  variant="secondary"
-                  onClick={() => handleAddClue(selectedCategory.key)}
-                  disabled={selectedCategory.clues.length >= 20}
-                >
-                  + Add clue
-                </Button>
-              </div>
-              <div className={styles.clueList}>
-                {selectedCategory.clues.map((clue) => (
-                  <details key={clue.key} open className={styles.clueCard}>
-                    <summary className={styles.clueSummary}>
-                      <span>
-                        {clue.finalQuestion ? 'Final Question' : `${clue.boardValue} points`}
-                      </span>
-                      <strong>{clue.prompt.trim() || 'Untitled clue'}</strong>
-                      <Badge tone="info">{clueTypeLabels[clue.type]}</Badge>
-                    </summary>
-                    <div className={styles.clueContent}>
-                    <label className={styles.finalQuestionToggle}>
-                      <input
-                        type="checkbox"
-                        checked={clue.finalQuestion}
-                        onChange={(event) => setFinalQuestion(clue.key, event.target.checked)}
-                      />
-                      Use as Final Question
-                    </label>
-                    <div className={styles.clueHeaderRow}>
-                      {!clue.finalQuestion ? (
-                        <TextField
-                          label="Board value"
-                          type="number"
-                          value={clue.boardValue}
-                          onChange={(event) =>
-                            updateClue(selectedCategory.key, clue.key, { boardValue: Number(event.target.value) })
-                          }
-                          className={styles.narrowField}
-                        />
-                      ) : null}
-                      <div className={styles.field}>
-                        <label className={styles.statusLabel} htmlFor={`clue-type-${clue.key}`}>
-                          Clue type
-                        </label>
-                        <select
-                          id={`clue-type-${clue.key}`}
-                          className={styles.statusSelect}
-                          value={clue.type}
-                          onChange={(event) =>
-                            handleClueTypeChange(selectedCategory.key, clue.key, event.target.value as ServerClueType)
-                          }
-                        >
-                          {clueTypeOptions.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <TextField
-                        label="Timer (seconds)"
-                        type="number"
-                        min={5}
-                        max={300}
-                        value={clue.timerSeconds}
-                        onChange={(event) =>
-                          updateClue(selectedCategory.key, clue.key, { timerSeconds: Number(event.target.value) })
-                        }
-                        className={styles.narrowField}
-                      />
-                      <button
-                        type="button"
-                        className={styles.removeButton}
-                        onClick={() => handleDeleteClue(selectedCategory.key, clue.key)}
-                        aria-label="Delete clue"
-                      >
-                        ✕
-                      </button>
-                    </div>
-
-                    <TextareaField
-                      label="Prompt"
-                      value={clue.prompt}
-                      onChange={(event) => updateClue(selectedCategory.key, clue.key, { prompt: event.target.value })}
-                      placeholder="e.g. This 1985 anthem topped the charts for six weeks."
+                  <div className={styles.categoryTitleField}>
+                    <TextField
+                      key={selectedCategory.key}
+                      label="Category title"
+                      value={selectedCategory.title}
+                      onChange={(event) => handleRenameCategory(selectedCategory.key, event.target.value)}
+                      autoFocus={selectedCategory.key.startsWith('category-local-')}
                     />
+                  </div>
+                  <Button
+                    variant="secondary"
+                    onClick={() => handleAddClue(selectedCategory.key)}
+                    disabled={selectedCategory.clues.length >= 20}
+                  >
+                    + Add clue
+                  </Button>
+                </div>
+                <div className={styles.clueListHeading}>
+                  <h3>Clues</h3>
+                  <span className={styles.limitHint}>{selectedCategory.clues.length} / 20</span>
+                </div>
+                <div className={styles.clueList}>
+                  {selectedCategory.clues.map((clue) => (
+                    <details key={clue.key} open={selectedClueKey === clue.key} className={styles.clueCard}>
+                      <summary id={`clue-summary-${clue.key}`} className={styles.clueSummary} onClick={(event) => {
+                        event.preventDefault()
+                        setSelectedClueKey((current) => current === clue.key ? null : clue.key)
+                      }}>
+                        <span className={styles.clueValue}>
+                          {clue.finalQuestion ? 'Final Question' : `${clue.boardValue} points`}
+                        </span>
+                        <span className={styles.clueSummaryText}>
+                          <strong>{clue.prompt.trim() || 'Untitled clue'}</strong>
+                          <span>{clueTypeLabels[clue.type]}</span>
+                        </span>
+                      </summary>
+                      <div className={styles.clueContent}>
+                        <fieldset className={styles.clueSection}>
+                          <legend>Question</legend>
+                          <div className={styles.clueHeaderRow}>
+                            {!clue.finalQuestion ? (
+                              <TextField
+                                label="Board value"
+                                type="number"
+                                value={clue.boardValue}
+                                onChange={(event) =>
+                                  updateClue(selectedCategory.key, clue.key, { boardValue: Number(event.target.value) })
+                                }
+                                className={styles.narrowField}
+                              />
+                            ) : null}
+                            <div className={styles.field}>
+                              <label className={styles.statusLabel} htmlFor={`clue-type-${clue.key}`}>
+                                Clue type
+                              </label>
+                              <select
+                                id={`clue-type-${clue.key}`}
+                                className={styles.statusSelect}
+                                value={clue.type}
+                                onChange={(event) =>
+                                  handleClueTypeChange(selectedCategory.key, clue.key, event.target.value as ServerClueType)
+                                }
+                              >
+                                {clueTypeOptions.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <TextField
+                              label="Timer (seconds)"
+                              type="number"
+                              min={5}
+                              max={300}
+                              value={clue.timerSeconds}
+                              onChange={(event) =>
+                                updateClue(selectedCategory.key, clue.key, { timerSeconds: Number(event.target.value) })
+                              }
+                              className={styles.narrowField}
+                            />
+                          </div>
 
-                    {clue.type !== 'price_slider' ? (
-                      <div className={styles.field}>
-                        <label className={styles.statusLabel} htmlFor={`clue-media-${clue.key}`}>
-                          Song
-                        </label>
-                        <select
-                          id={`clue-media-${clue.key}`}
-                          className={styles.statusSelect}
-                          value={clue.mediaAssetId ?? ''}
-                          onChange={(event) =>
-                            updateClue(selectedCategory.key, clue.key, { mediaAssetId: event.target.value || null })
-                          }
-                        >
-                          <option value="">No song attached</option>
-                          {musicMediaAssets.map((asset) => (
-                            <option key={asset.id} value={asset.id}>
-                              {asset.originalName}
-                            </option>
-                          ))}
-                        </select>
-                        {clue.mediaAssetId ? (
-                          <audio controls src={mediaStreamUrl(clue.mediaAssetId)} className={styles.audioPreview} />
-                        ) : null}
-                      </div>
-                    ) : null}
+                          <TextareaField
+                            id={`clue-prompt-${clue.key}`}
+                            label="Question prompt"
+                            value={clue.prompt}
+                            onChange={(event) => updateClue(selectedCategory.key, clue.key, { prompt: event.target.value })}
+                            placeholder="e.g. This 1985 anthem topped the charts for six weeks."
+                          />
 
-                    <div className={styles.field}>
-                      <label className={styles.statusLabel} htmlFor={`clue-reveal-media-${clue.key}`}>
-                        Answer reveal song (optional)
-                      </label>
-                      <select
-                        id={`clue-reveal-media-${clue.key}`}
-                        className={styles.statusSelect}
-                        value={clue.revealMediaAssetId ?? ''}
-                        onChange={(event) =>
-                          updateClue(selectedCategory.key, clue.key, {
-                            revealMediaAssetId: event.target.value || null,
-                          })
-                        }
-                      >
-                        <option value="">No reveal song</option>
-                        {musicMediaAssets.map((asset) => (
-                          <option key={asset.id} value={asset.id}>
-                            {asset.originalName}
-                          </option>
-                        ))}
-                      </select>
-                      {clue.revealMediaAssetId ? (
-                        <audio
-                          controls
-                          src={mediaStreamUrl(clue.revealMediaAssetId)}
-                          className={styles.audioPreview}
-                        />
-                      ) : null}
-                    </div>
-
-                    <GifPicker
-                      value={clue.config.revealGif}
-                      providers={gifProviders}
-                      onProvidersChange={setGifProviders}
-                      onChange={(revealGif) => {
-                        const { revealGif: _currentGif, ...configWithoutGif } = clue.config
-                        updateClue(selectedCategory.key, clue.key, {
-                          config: revealGif
-                            ? { ...configWithoutGif, revealGif }
-                            : configWithoutGif,
-                        })
-                      }}
-                    />
-
-                    {clue.type === 'music_multiple_choice' ? (
-                      <div className={styles.field}>
-                        <span className={styles.statusLabel}>Answer choices (need at least two)</span>
-                        {(clue.config.choices ?? ['', '']).map((choice, index) => (
-                          <div key={index} className={styles.choiceRow}>
+                          {clue.type !== 'price_slider' ? (
+                            <div className={styles.field}>
+                              <label className={styles.statusLabel} htmlFor={`clue-media-${clue.key}`}>
+                                Song
+                              </label>
+                              <select
+                                id={`clue-media-${clue.key}`}
+                                className={styles.statusSelect}
+                                value={clue.mediaAssetId ?? ''}
+                                onChange={(event) =>
+                                  updateClue(selectedCategory.key, clue.key, { mediaAssetId: event.target.value || null })
+                                }
+                              >
+                                <option value="">No song attached</option>
+                                {musicMediaAssets.map((asset) => (
+                                  <option key={asset.id} value={asset.id}>
+                                    {asset.originalName}
+                                  </option>
+                                ))}
+                              </select>
+                              <Button variant="ghost" onClick={() => setEditorSection('media')}>
+                                Upload or manage songs
+                              </Button>
+                              {clue.mediaAssetId ? (
+                                <audio controls src={mediaStreamUrl(clue.mediaAssetId)} className={styles.audioPreview} />
+                              ) : null}
+                            </div>
+                          ) : null}
+                          <label className={styles.finalQuestionToggle}>
                             <input
-                              className={styles.choiceInput}
-                              aria-label={`Choice ${index + 1}`}
-                              value={choice}
-                              onChange={(event) => {
-                                const nextChoices = [...(clue.config.choices ?? [])]
-                                nextChoices[index] = event.target.value
+                              type="checkbox"
+                              checked={clue.finalQuestion}
+                              onChange={(event) => setFinalQuestion(clue.key, event.target.checked)}
+                            />
+                            Use as Final Question
+                          </label>
+                        </fieldset>
+
+                        <fieldset className={styles.clueSection}>
+                          <legend>Answer</legend>
+                          <p className={styles.helperText}>Set the answer used to score this clue.</p>
+
+                          {clue.type === 'music_multiple_choice' ? (
+                            <div className={styles.field}>
+                              <span className={styles.statusLabel}>Answer choices (need at least two)</span>
+                              {(clue.config.choices ?? ['', '']).map((choice, index) => (
+                                <div key={index} className={styles.choiceRow}>
+                                  <input
+                                    className={styles.choiceInput}
+                                    aria-label={`Choice ${index + 1}`}
+                                    value={choice}
+                                    onChange={(event) => {
+                                      const nextChoices = [...(clue.config.choices ?? [])]
+                                      nextChoices[index] = event.target.value
+                                      updateClue(selectedCategory.key, clue.key, {
+                                        config: { ...clue.config, choices: nextChoices },
+                                      })
+                                    }}
+                                  />
+                                  <button
+                                    type="button"
+                                    className={styles.removeButton}
+                                    aria-label={`Remove choice ${index + 1}`}
+                                    onClick={() => {
+                                      const nextChoices = (clue.config.choices ?? []).filter((_, i) => i !== index)
+                                      updateClue(selectedCategory.key, clue.key, {
+                                        config: { ...clue.config, choices: nextChoices },
+                                      })
+                                    }}
+                                    disabled={(clue.config.choices ?? []).length <= 2}
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              ))}
+                              <Button
+                                variant="ghost"
+                                size="md"
+                                onClick={() =>
+                                  updateClue(selectedCategory.key, clue.key, {
+                                    config: { ...clue.config, choices: [...(clue.config.choices ?? []), ''] },
+                                  })
+                                }
+                              >
+                                + Add choice
+                              </Button>
+                              <TextField
+                                label="Correct choice (must match one of the choices above exactly)"
+                                value={clue.config.correctAnswer ?? ''}
+                                onChange={(event) =>
+                                  updateClue(selectedCategory.key, clue.key, {
+                                    config: { ...clue.config, correctAnswer: event.target.value },
+                                  })
+                                }
+                              />
+                            </div>
+                          ) : null}
+
+                          {clue.type === 'music_free_text' ? (
+                            <div className={styles.field}>
+                              <TextField
+                                label="Correct answer"
+                                value={clue.config.correctAnswer ?? ''}
+                                onChange={(event) =>
+                                  updateClue(selectedCategory.key, clue.key, {
+                                    config: { ...clue.config, correctAnswer: event.target.value },
+                                  })
+                                }
+                              />
+                              <TextareaField
+                                label="Other accepted answers (one per line, optional)"
+                                value={(clue.config.acceptedAnswers ?? []).join('\n')}
+                                onChange={(event) =>
+                                  updateClue(selectedCategory.key, clue.key, {
+                                    config: {
+                                      ...clue.config,
+                                      acceptedAnswers: event.target.value
+                                        .split('\n')
+                                        .map((line) => line.trim())
+                                        .filter(Boolean),
+                                    },
+                                  })
+                                }
+                              />
+                            </div>
+                          ) : null}
+
+                          {clue.type === 'price_slider' ? (
+                            <div className={styles.priceGrid}>
+                              <TextField
+                                label="Min"
+                                type="number"
+                                value={clue.config.min ?? 0}
+                                onChange={(event) =>
+                                  updateClue(selectedCategory.key, clue.key, {
+                                    config: { ...clue.config, min: Number(event.target.value) },
+                                  })
+                                }
+                              />
+                              <TextField
+                                label="Max"
+                                type="number"
+                                value={clue.config.max ?? 100}
+                                onChange={(event) =>
+                                  updateClue(selectedCategory.key, clue.key, {
+                                    config: { ...clue.config, max: Number(event.target.value) },
+                                  })
+                                }
+                              />
+                              <TextField
+                                label="Step"
+                                type="number"
+                                value={clue.config.step ?? 1}
+                                onChange={(event) =>
+                                  updateClue(selectedCategory.key, clue.key, {
+                                    config: { ...clue.config, step: Number(event.target.value) },
+                                  })
+                                }
+                              />
+                              <TextField
+                                label="Correct price"
+                                type="number"
+                                value={clue.config.correctPrice ?? 0}
+                                onChange={(event) =>
+                                  updateClue(selectedCategory.key, clue.key, {
+                                    config: { ...clue.config, correctPrice: Number(event.target.value) },
+                                  })
+                                }
+                              />
+                              <TextField
+                                label="Prefix"
+                                value={clue.config.prefix ?? '$'}
+                                onChange={(event) =>
+                                  updateClue(selectedCategory.key, clue.key, {
+                                    config: { ...clue.config, prefix: event.target.value },
+                                  })
+                                }
+                              />
+                            </div>
+                          ) : null}
+                        </fieldset>
+
+                        <details className={styles.revealSection}>
+                          <summary>Answer reveal (optional)</summary>
+                          <div className={styles.revealContent}>
+                            <p className={styles.helperText}>Play a song or show a GIF when the answer is revealed.</p>
+                            <div className={styles.field}>
+                              <label className={styles.statusLabel} htmlFor={`clue-reveal-media-${clue.key}`}>
+                                Answer reveal song (optional)
+                              </label>
+                              <select
+                                id={`clue-reveal-media-${clue.key}`}
+                                className={styles.statusSelect}
+                                value={clue.revealMediaAssetId ?? ''}
+                                onChange={(event) =>
+                                  updateClue(selectedCategory.key, clue.key, {
+                                    revealMediaAssetId: event.target.value || null,
+                                  })
+                                }
+                              >
+                                <option value="">No reveal song</option>
+                                {musicMediaAssets.map((asset) => (
+                                  <option key={asset.id} value={asset.id}>
+                                    {asset.originalName}
+                                  </option>
+                                ))}
+                              </select>
+                              {clue.revealMediaAssetId ? (
+                                <audio
+                                  controls
+                                  src={mediaStreamUrl(clue.revealMediaAssetId)}
+                                  className={styles.audioPreview}
+                                />
+                              ) : null}
+                            </div>
+
+                            <GifPicker
+                              value={clue.config.revealGif}
+                              providers={gifProviders}
+                              onProvidersChange={setGifProviders}
+                              onChange={(revealGif) => {
+                                const { revealGif: _currentGif, ...configWithoutGif } = clue.config
                                 updateClue(selectedCategory.key, clue.key, {
-                                  config: { ...clue.config, choices: nextChoices },
+                                  config: revealGif
+                                    ? { ...configWithoutGif, revealGif }
+                                    : configWithoutGif,
                                 })
                               }}
                             />
-                            <button
-                              type="button"
-                              className={styles.removeButton}
-                              aria-label={`Remove choice ${index + 1}`}
-                              onClick={() => {
-                                const nextChoices = (clue.config.choices ?? []).filter((_, i) => i !== index)
-                                updateClue(selectedCategory.key, clue.key, {
-                                  config: { ...clue.config, choices: nextChoices },
-                                })
-                              }}
-                              disabled={(clue.config.choices ?? []).length <= 2}
-                            >
-                              ✕
-                            </button>
+
                           </div>
-                        ))}
-                        <Button
-                          variant="ghost"
-                          size="md"
-                          onClick={() =>
-                            updateClue(selectedCategory.key, clue.key, {
-                              config: { ...clue.config, choices: [...(clue.config.choices ?? []), ''] },
-                            })
-                          }
-                        >
-                          + Add choice
-                        </Button>
-                        <TextField
-                          label="Correct choice (must match one of the choices above exactly)"
-                          value={clue.config.correctAnswer ?? ''}
-                          onChange={(event) =>
-                            updateClue(selectedCategory.key, clue.key, {
-                              config: { ...clue.config, correctAnswer: event.target.value },
-                            })
-                          }
-                        />
+                        </details>
+                        <div className={styles.clueFooter}>
+                          <Button variant="danger" onClick={() => handleDeleteClue(selectedCategory.key, clue.key)}>
+                            Delete clue
+                          </Button>
+                          <Button variant="secondary" onClick={() => {
+                            setSelectedClueKey(null)
+                            document.getElementById(`clue-summary-${clue.key}`)?.focus()
+                          }}>
+                            Close clue
+                          </Button>
+                        </div>
                       </div>
-                    ) : null}
-
-                    {clue.type === 'music_free_text' ? (
-                      <div className={styles.field}>
-                        <TextField
-                          label="Correct answer"
-                          value={clue.config.correctAnswer ?? ''}
-                          onChange={(event) =>
-                            updateClue(selectedCategory.key, clue.key, {
-                              config: { ...clue.config, correctAnswer: event.target.value },
-                            })
-                          }
-                        />
-                        <TextareaField
-                          label="Other accepted answers (one per line, optional)"
-                          value={(clue.config.acceptedAnswers ?? []).join('\n')}
-                          onChange={(event) =>
-                            updateClue(selectedCategory.key, clue.key, {
-                              config: {
-                                ...clue.config,
-                                acceptedAnswers: event.target.value
-                                  .split('\n')
-                                  .map((line) => line.trim())
-                                  .filter(Boolean),
-                              },
-                            })
-                          }
-                        />
-                      </div>
-                    ) : null}
-
-                    {clue.type === 'price_slider' ? (
-                      <div className={styles.priceGrid}>
-                        <TextField
-                          label="Min"
-                          type="number"
-                          value={clue.config.min ?? 0}
-                          onChange={(event) =>
-                            updateClue(selectedCategory.key, clue.key, {
-                              config: { ...clue.config, min: Number(event.target.value) },
-                            })
-                          }
-                        />
-                        <TextField
-                          label="Max"
-                          type="number"
-                          value={clue.config.max ?? 100}
-                          onChange={(event) =>
-                            updateClue(selectedCategory.key, clue.key, {
-                              config: { ...clue.config, max: Number(event.target.value) },
-                            })
-                          }
-                        />
-                        <TextField
-                          label="Step"
-                          type="number"
-                          value={clue.config.step ?? 1}
-                          onChange={(event) =>
-                            updateClue(selectedCategory.key, clue.key, {
-                              config: { ...clue.config, step: Number(event.target.value) },
-                            })
-                          }
-                        />
-                        <TextField
-                          label="Correct price"
-                          type="number"
-                          value={clue.config.correctPrice ?? 0}
-                          onChange={(event) =>
-                            updateClue(selectedCategory.key, clue.key, {
-                              config: { ...clue.config, correctPrice: Number(event.target.value) },
-                            })
-                          }
-                        />
-                        <TextField
-                          label="Prefix"
-                          value={clue.config.prefix ?? '$'}
-                          onChange={(event) =>
-                            updateClue(selectedCategory.key, clue.key, {
-                              config: { ...clue.config, prefix: event.target.value },
-                            })
-                          }
-                        />
-                      </div>
-                    ) : null}
-
-                    <span className={styles.clueTypeBadgeRow}>
-                      <Badge tone="info">{clueTypeLabels[clue.type]}</Badge>
-                    </span>
+                    </details>
+                  ))}
+                  {selectedCategory.clues.length === 0 ? (
+                    <div className={styles.clueEmptyState}>
+                      <h3>Add the first clue</h3>
+                      <p>Start with a question, then choose how players answer it.</p>
+                      <Button variant="primary" onClick={() => handleAddClue(selectedCategory.key)}>+ Add clue</Button>
                     </div>
-                  </details>
-                ))}
-                {selectedCategory.clues.length === 0 ? <p>No clues yet in this category.</p> : null}
+                  ) : null}
+                </div>
               </div>
+            ) : (
+              <div className={styles.clueEmptyState}>
+                <h3>{pack.categories.length ? 'Choose a category' : 'Start with a category'}</h3>
+                <p>{pack.categories.length ? 'Select a category on the left to edit its clues.' : 'Group related clues under a topic, like 80s music or Guess the price.'}</p>
+                {!pack.categories.length ? <Button variant="primary" onClick={handleAddCategory}>+ Add category</Button> : null}
               </div>
-            </details>
+            )}
+          </Card>
+        </div>
+      </section>
+
+      <section id="pack-media" hidden={editorSection !== 'media'} aria-labelledby="pack-media-heading">
+        <Card className={styles.mediaCard}>
+          <div className={styles.panelHeader}>
+            <div className={styles.sectionIntro}>
+              <h2 id="pack-media-heading">Media library</h2>
+              <p>Upload songs here, then attach them from a clue&apos;s Question or Answer reveal section.</p>
+            </div>
+            <Button variant="secondary" onClick={() => mediaInputRef.current?.click()} disabled={uploading}>
+              {uploading ? 'Uploading…' : '+ Upload song'}
+            </Button>
+            <input
+              ref={mediaInputRef}
+              type="file"
+              accept="audio/*"
+              className={styles.hiddenInput}
+              onChange={handleUploadMedia}
+            />
+          </div>
+          {mediaDirectory ? (
+            <p className={styles.mediaDirectory}>
+              Song directory: <code>{mediaDirectory}</code>
+            </p>
+          ) : null}
+          {mediaError ? (
+            <p role="alert" className={styles.errorText}>
+              {mediaError}
+            </p>
+          ) : null}
+          <ul className={styles.mediaList}>
+            {musicMediaAssets.map((asset) => (
+              <li key={asset.id} className={styles.mediaRow}>
+                <span className={styles.mediaName}>{asset.originalName}</span>
+                <span className={styles.mediaActions}>
+                  <span className={styles.mediaMeta}>{Math.round(asset.sizeBytes / 1024)} KB</span>
+                  <Button
+                    variant="danger"
+                    size="md"
+                    disabled={deletingMediaId === asset.id}
+                    onClick={() => handleDeleteMedia(asset)}
+                  >
+                    {deletingMediaId === asset.id ? 'Removing…' : 'Remove'}
+                  </Button>
+                </span>
+              </li>
+            ))}
+            {musicMediaAssets.length === 0 ? <p>No songs uploaded yet.</p> : null}
+          </ul>
+        </Card>
+      </section>
+
+      <section id="pack-preview" hidden={editorSection !== 'preview'} aria-labelledby="pack-preview-heading">
+        <div className={styles.sectionIntro}>
+          <h2 id="pack-preview-heading">Board preview</h2>
+          <p>This is how your board will look in a game. Unsaved edits are included; this preview does not start a game.</p>
+          {pack.categories.some((category) => category.clues.some((clue) => clue.finalQuestion)) ? (
+            <p>The Final Question plays after the board and is not shown here.</p>
+          ) : null}
+        </div>
+        <Card>
+          {previewBoard.length ? (
+            <CategoryBoard
+              categories={categoriesFromBoard(previewBoard)}
+              clues={cluesFromSnapshot({ board: previewBoard, usedClueIds: [] })}
+            />
           ) : (
-            <p>Select or add a category to start adding clues.</p>
+            <div className={styles.clueEmptyState}>
+              <h3>No board clues yet</h3>
+              <p>Add a clue to a category to see it here. Final Questions are separate from the board.</p>
+              <Button variant="secondary" onClick={() => setEditorSection('categories')}>
+                Add clues
+              </Button>
+            </div>
           )}
         </Card>
-      </div>
-
-      <Card className={styles.mediaCard}>
-        <div className={styles.panelHeader}>
-          <h2>Media library</h2>
-          <Button variant="secondary" onClick={() => mediaInputRef.current?.click()} disabled={uploading}>
-            {uploading ? 'Uploading…' : '+ Upload song'}
-          </Button>
-          <input
-            ref={mediaInputRef}
-            type="file"
-            accept="audio/*"
-            className={styles.hiddenInput}
-            onChange={handleUploadMedia}
-          />
-        </div>
-        {mediaDirectory ? (
-          <p className={styles.mediaDirectory}>
-            Song directory: <code>{mediaDirectory}</code>
-          </p>
-        ) : null}
-        {mediaError ? (
-          <p role="alert" className={styles.errorText}>
-            {mediaError}
-          </p>
-        ) : null}
-        <ul className={styles.mediaList}>
-          {musicMediaAssets.map((asset) => (
-            <li key={asset.id} className={styles.mediaRow}>
-              <span className={styles.mediaName}>{asset.originalName}</span>
-              <span className={styles.mediaActions}>
-                <span className={styles.mediaMeta}>{Math.round(asset.sizeBytes / 1024)} KB</span>
-                <Button
-                  variant="danger"
-                  size="md"
-                  disabled={deletingMediaId === asset.id}
-                  onClick={() => handleDeleteMedia(asset)}
-                >
-                  {deletingMediaId === asset.id ? 'Removing…' : 'Remove'}
-                </Button>
-              </span>
-            </li>
-          ))}
-          {musicMediaAssets.length === 0 ? <p>No songs uploaded yet.</p> : null}
-        </ul>
-      </Card>
+      </section>
     </div>
   )
 }

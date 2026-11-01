@@ -5,6 +5,7 @@ import { getHostToken } from '../../lib/roomStorage'
 import {
   categoriesFromBoard,
   cluesFromSnapshot,
+  expectedRoomContext,
   leaderboardFromPlayers,
   priceResultsFromSnapshot,
   playersFromSnapshot,
@@ -84,10 +85,10 @@ export function useHostRoom(roomCode: string): HostRoomResult {
     (command: string, payload: Record<string, unknown> = {}) =>
       emitWithAck('host:command', {
         command,
-        expectedStateVersion: snapshot?.stateVersion,
         ...payload,
+        ...expectedRoomContext(snapshot),
       }),
-    [snapshot?.stateVersion],
+    [snapshot],
   )
 
   if (!snapshot) return { game: null, loading, error, sendCommand }

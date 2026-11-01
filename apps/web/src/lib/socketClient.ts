@@ -24,11 +24,17 @@ export function getSocket(): Socket {
 export type AckResult<T> = { ok: true; data: T } | { ok: false; error: string }
 
 /** Wraps a callback-ack socket emit in a Promise, rejecting on `{ ok: false }`. */
-export function emitWithAck<T = unknown>(event: string, payload: unknown): Promise<T> {
+export function emitWithAck<T = unknown>(event: string, payload: Record<string, unknown>): Promise<T> {
+  const requestId = payload.requestId ?? (
+    typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('')
+  )
+  const request = { ...payload, requestId }
   return new Promise((resolve, reject) => {
     getSocket()
       .timeout(10_000)
-      .emit(event, payload, (error: Error | null, result?: AckResult<T>) => {
+      .emit(event, request, (error: Error | null, result?: AckResult<T>) => {
       if (error) {
         reject(new Error('The game server did not respond. Check your connection and try again.'))
         return
