@@ -21,9 +21,8 @@ if ($LASTEXITCODE -ne 0 -or [int]$major -ne 22) { throw 'Live Blob validation re
 $previousRunId = $env:FRIENDS_TRIVIA_TEST_RUN_ID
 try {
     $env:FRIENDS_TRIVIA_TEST_RUN_ID = $RunId
-    $guardUrl = ([System.Uri]$guard).AbsoluteUri
-    $code = "const {validateBlobTestTarget}=await import('$guardUrl'); validateBlobTestTarget(process.env);"
-    & node --input-type=module -e $code
+    $code = "const {pathToFileURL}=await import('node:url'); const {validateBlobTestTarget}=await import(pathToFileURL(process.argv[1]).href); validateBlobTestTarget(process.env);"
+    & node --input-type=module -e $code $guard
     if ($LASTEXITCODE -ne 0) { throw 'Blob target gates failed before credentials or data access.' }
     if (-not $Run) { Write-Host 'Supplied Blob gates validated offline; actual resources and approval are not inferred.'; return }
     Push-Location (Join-Path $root 'apps\server')
