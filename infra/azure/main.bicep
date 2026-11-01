@@ -3,7 +3,8 @@ targetScope = 'resourceGroup'
 @allowed(['centralus'])
 param location string = 'centralus'
 param humanOwner string = 'YogiJogiFresh'
-param repository string = 'YogiJogiFresh/FriendsTrivia'
+@description('GitHub OIDC repository subject with immutable owner/repository IDs, without the repo: prefix.')
+param repository string = 'YogiJogiFresh@12243528/FriendsTrivia@1362058355'
 @description('False provisions the isolated data/test target before the application is ready.')
 param includeApplication bool = false
 @minValue(40)

@@ -317,7 +317,9 @@ price scoring, library edits, history deletion and owned cleanup. The Blob case 
 full/ranged reads, rejected overwrites without deleting existing content, and conditional cleanup.
 Temporary operator test-only grants were removed after acceptance; the scoped service identities remain.
 It uses Linux Node22 and Azure login OIDC into protected `azure-tests`, exact subject
-`repo:YogiJogiFresh/FriendsTrivia:environment:azure-tests`.
+`repo:YogiJogiFresh@12243528/FriendsTrivia@1362058355:environment:azure-tests`.
+GitHub uses immutable owner/repository IDs in this repository's OIDC subjects; Azure
+federation must match that exact subject format, not the names-only format.
 Set environment variables `AZURE_TENANT_ID`, `AZURE_TEST_CLIENT_ID`, `COSMOS_ENDPOINT`,
 `COSMOS_TEST_EXPECTED_ENDPOINT`, `COSMOS_TEST_ACCOUNT_RESOURCE_ID`, and
 `AZURE_STORAGE_ACCOUNT_URL` from verified outputs.
