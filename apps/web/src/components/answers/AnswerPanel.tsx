@@ -21,6 +21,7 @@ export interface AnswerPanelProps {
   clue: Clue
   /** True while answers are closed, the round is paused, or the connection is down. */
   disabled?: boolean
+  submitted?: boolean
   /** May reject (e.g. server ack error) — the panel then returns to the confirm step so the player can retry. */
   onSubmit?: (submission: AnswerSubmission) => void | Promise<void>
 }
@@ -32,7 +33,7 @@ type Phase = 'answering' | 'confirming' | 'submitted'
  * answer/confirm/submitted flow described in the plan: one accepted
  * submission per player, with an explicit confirmation step before it locks.
  */
-export function AnswerPanel({ clue, disabled = false, onSubmit }: AnswerPanelProps) {
+export function AnswerPanel({ clue, disabled = false, submitted = false, onSubmit }: AnswerPanelProps) {
   const [phase, setPhase] = useState<Phase>('answering')
   const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null)
   const [freeText, setFreeText] = useState('')
@@ -74,7 +75,7 @@ export function AnswerPanel({ clue, disabled = false, onSubmit }: AnswerPanelPro
     }
   }
 
-  if (phase === 'submitted') {
+  if (submitted || phase === 'submitted') {
     return (
       <div className={styles.submittedState} role="status">
         <span className={styles.submittedIcon} aria-hidden="true">
@@ -102,7 +103,7 @@ export function AnswerPanel({ clue, disabled = false, onSubmit }: AnswerPanelPro
           <Button variant="secondary" size="lg" onClick={() => setPhase('answering')}>
             Change answer
           </Button>
-          <Button variant="primary" size="lg" onClick={handleConfirm}>
+          <Button variant="primary" size="lg" disabled={disabled} onClick={handleConfirm}>
             Confirm
           </Button>
         </div>

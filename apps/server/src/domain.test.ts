@@ -6,10 +6,11 @@ import { createSqliteStore } from './sqliteStore.js'
 import { PackRepository } from './repositories/packs.js'
 import { RoomRepository } from './repositories/rooms.js'
 import { GameEngine } from './game/engine.js'
+import { createId, createToken } from './ids.js'
 
 const databases: Database.Database[] = []
 afterEach(() => { for (const database of databases.splice(0)) if (database.open) database.close() })
-async function fixture() {
+async function fixture(teams?: string[]) {
   const database = openDatabase(':memory:')
   databases.push(database)
   const store = createSqliteStore(database)
@@ -21,13 +22,47 @@ async function fixture() {
       config: { correctPrice: 50, min: 0, max: 100 } }],
   }] })
   const created = await rooms.create(pack.id, {
-    timerSeconds: 30, speedBonusMax: 100, priceRankPercentages: [1], uniqueNicknames: true,
+    timerSeconds: 30, speedBonusMax: 100, priceRankPercentages: [1], uniqueNicknames: true, ...(teams ? { teams } : {}),
   }, 4)
-  const player = (await rooms.join(created.room, 'Alex')).player
+  const player = (await rooms.join(created.room, 'Alex', teams?.[0])).player
   const engine = new GameEngine(store, rooms, 'http://localhost:3000')
   return { database, store, rooms, engine, room: created.room, player, clueId: saved!.categories[0]!.clues[0]!.id }
 }
 describe('typed domain SQLite store', () => {
+  it('recovers a full locked seat atomically without changing team, scores, answers, wagers or room state', async () => {
+    const game = await fixture(['Blue'])
+    for (let index = 1; index < 50; index++) await game.rooms.join(game.room, `Player ${index}`, 'Blue')
+    await game.engine.adjustScore(game.room, game.player.id, 123, 'Existing score')
+    let room = await game.engine.startGame(game.room)
+    room = await game.engine.selectClue(room, game.clueId)
+    await game.engine.submitAnswer(room, game.player.id, 50)
+    const loaded = await game.store.rooms.load(room.ref)
+    const attempt = { clueId: game.clueId, attempt: room.state.attempt! }
+    await game.store.rooms.commit({ ref: room.ref, expectedRevision: loaded.revision, operationId: createId(), at: new Date().toISOString(),
+      change: { kind: 'wager', attempt, generation: room.state.wagerGeneration ?? 0, wager: { playerId: game.player.id, amount: 10 } } })
+    await game.rooms.setJoiningLocked(room.id, true)
+    await game.rooms.setConnected(game.player.id, false)
+    const before = await game.store.rooms.load(room.ref)
+    const answer = await game.store.rooms.submissionForPlayer(room.ref, attempt, game.player.id)
+    const token = createToken()
+    const recovered = await game.rooms.recoverSeat(before.room, game.player.id, token)
+    expect(recovered).toMatchObject({ id: game.player.id, teamName: 'Blue', nickname: 'Alex', connected: true })
+    const after = await game.store.rooms.load(room.ref)
+    expect(after.activeScores).toHaveLength(50)
+    expect(after.activeScores[0]).toMatchObject({ playerId: game.player.id, score: 123, connected: true })
+    expect(after.room.state).toEqual(before.room.state)
+    expect(after.room.joiningLocked).toBe(true)
+    expect(await game.store.rooms.submissionForPlayer(room.ref, attempt, game.player.id)).toEqual(answer)
+    expect(await game.store.rooms.wagers(room.ref, attempt)).toEqual([{ playerId: game.player.id, amount: 10 }])
+    expect(await game.rooms.reconnect(room, game.player.id, 'old-token')).toBeUndefined()
+    expect((await game.rooms.reconnect(room, game.player.id, token))?.id).toBe(game.player.id)
+    await expect(game.engine.submitAnswer((await game.rooms.getById(room.id))!, game.player.id, 50)).rejects.toThrow('already')
+    await expect(game.rooms.recoverSeat(room, game.player.id, createToken())).rejects.toMatchObject({ code: 'seat_connected' })
+    await expect(game.rooms.recoverSeat({ ...room, ref: { ...room.ref, generation: 'old' } }, game.player.id, createToken())).rejects.toMatchObject({ code: 'not_found' })
+    await game.rooms.kickPlayer(room.id, game.player.id)
+    await expect(game.rooms.recoverSeat(room, game.player.id, createToken())).rejects.toMatchObject({ code: 'invalid_identity' })
+    game.engine.dispose()
+  })
   it('migrates existing version-eight data in place and is idempotent', () => {
     const database = new Database(':memory:')
     databases.push(database)

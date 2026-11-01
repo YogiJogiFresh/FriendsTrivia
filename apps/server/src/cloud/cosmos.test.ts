@@ -4,7 +4,8 @@ import { createCosmosStore, openCosmosStore } from './cosmos.js'
 import { FakeCosmos } from './cosmosFake.testSupport.js'
 import { CosmosFailure, document, LIBRARY_PK, MAX_BATCH_BYTES, retry, SdkCosmosAccess, validateBatch } from './cosmosIo.js'
 import { SONG_QUOTA_BYTES } from './cosmosMedia.js'
-import { type RoomDoc, roomItemId } from './cosmosRooms.js'
+import { CosmosRooms, type RoomDoc, roomItemId } from './cosmosRooms.js'
+import { createId, createToken } from '../ids.js'
 import { type DeploymentConfig, cloudConfig, config } from '../config.js'
 import type { DomainStore, MediaAsset, RoomCommit } from '../domain.js'
 import { PackRepository } from '../repositories/packs.js'
@@ -42,6 +43,101 @@ function adjustment(ref: RoomCommit['ref'], revision: string, playerId: string, 
     change: { kind: 'adjustment', award: { playerId, delta, source: 'host_adjustment', reason: 'Correction', actor: 'host' } } }
 }
 describe('Cosmos adapter — OFFLINE SDK-seam tests, NOT live Cosmos conformance', () => {
+  it('recovers the original team, score, answer and wager at capacity without changing the game window', async () => {
+    const game = await fixture()
+    const created = await game.rooms.create(game.pack.id, { ...settings, teams: ['Blue'] }, 4)
+    const joined = await game.rooms.join(created.room, 'Alex', 'Blue')
+    for (let index = 1; index < 50; index++) await game.rooms.join(created.room, `Player ${index}`, 'Blue')
+    await game.engine.adjustScore(created.room, joined.player.id, 123, 'Existing score')
+    let room = await game.engine.startGame(created.room)
+    room = await game.engine.selectClue(room, game.clueId)
+    await game.engine.submitAnswer(room, joined.player.id, 50)
+    const loaded = await game.store.rooms.load(room.ref), attempt = { clueId: game.clueId, attempt: room.state.attempt! }
+    await game.store.rooms.commit({ ref: room.ref, expectedRevision: loaded.revision, operationId: createId(), at: new Date().toISOString(),
+      change: { kind: 'wager', attempt, generation: room.state.wagerGeneration ?? 0, wager: { playerId: joined.player.id, amount: 10 } } })
+    await game.rooms.setJoiningLocked(room.id, true)
+    await game.rooms.setConnected(joined.player.id, false)
+    const before = await game.store.rooms.load(room.ref), answer = await game.store.rooms.submissionForPlayer(room.ref, attempt, joined.player.id)
+    const token = createToken()
+    game.games.fail = { code: 503 }
+    await expect(game.rooms.recoverSeat(before.room, joined.player.id, token)).rejects.toThrow()
+    expect((await game.store.rooms.loadPlayer(room.ref, joined.player.id))?.reconnectTokenHash).toBe(joined.player.reconnectTokenHash)
+    await game.rooms.recoverSeat(before.room, joined.player.id, token)
+    const after = await game.store.rooms.load(room.ref)
+    expect(after.activeScores).toHaveLength(50)
+    expect(after.activeScores[0]).toMatchObject({ playerId: joined.player.id, nickname: 'Alex', teamName: 'Blue', score: 123, connected: true })
+    expect(after.room.state).toEqual(before.room.state)
+    expect(after.room.joiningLocked).toBe(true)
+    expect(await game.store.rooms.submissionForPlayer(room.ref, attempt, joined.player.id)).toEqual(answer)
+    expect(await game.store.rooms.wagers(room.ref, attempt)).toEqual([{ playerId: joined.player.id, amount: 10 }])
+    expect(await game.rooms.reconnect(room, joined.player.id, joined.reconnectToken)).toBeUndefined()
+    await expect(game.engine.submitAnswer((await game.rooms.getById(room.id))!, joined.player.id, 50)).rejects.toThrow('already')
+    await expect(game.rooms.recoverSeat(room, joined.player.id, createToken())).rejects.toMatchObject({ code: 'seat_connected' })
+    await game.rooms.kickPlayer(room.id, joined.player.id)
+    await expect(game.rooms.recoverSeat(room, joined.player.id, createToken())).rejects.toMatchObject({ code: 'invalid_identity' })
+  })
+
+  it('shares frozen queries, protects cached values and revalidates deleted or reused generations', async () => {
+    const game = await fixture(() => 'CACHE')
+    const queries = vi.spyOn(game.games, 'query'), reads = vi.spyOn(game.games, 'read')
+    const board = await game.store.rooms.board(game.room.ref)
+    board[0]!.categoryTitle = 'Changed by caller'
+    const clue = (await game.store.rooms.clue(game.room.ref, game.clueId))!
+    clue.config.correctPrice = 999
+    expect(await game.store.rooms.finalClueId(game.room.ref)).toBeUndefined()
+    expect((await game.store.rooms.board(game.room.ref))[0]?.categoryTitle).toBe('Prices')
+    expect((await game.store.rooms.clue(game.room.ref, game.clueId))?.config.correctPrice).toBe(50)
+    expect(queries.mock.calls.filter(([query]) => query.filters.some((filter) => filter.value === 'frozenClue'))).toHaveLength(1)
+    await game.rooms.join(game.room, 'Alex')
+    expect(queries).toHaveBeenCalledTimes(1)
+    reads.mockClear()
+    await game.rooms.getByCode('cache')
+    expect(reads.mock.calls).toHaveLength(3)
+    expect(reads.mock.calls.some(([pk]) => pk.startsWith('id:'))).toBe(false)
+    await game.engine.endSession(game.room)
+    expect(await game.store.history.removeCompleted(game.room.id)).toBe('deleted')
+    await expect(game.store.rooms.board(game.room.ref)).rejects.toMatchObject({ code: 'not_found' })
+    const created = await game.rooms.create(game.pack.id, settings, 4)
+    expect(created.room.code).toBe(game.room.code)
+    expect(created.room.ref.generation).not.toBe(game.room.ref.generation)
+    expect((await game.store.rooms.board(created.room.ref))[0]?.categoryTitle).toBe('Prices')
+    await expect(game.store.rooms.clue(game.room.ref, game.clueId)).rejects.toMatchObject({ code: 'not_found' })
+  })
+
+  it('coalesces cache misses, retries failed fills and clears cache on close', async () => {
+    const game = await fixture(), query = game.games.query.bind(game.games)
+    const queries = vi.spyOn(game.games, 'query').mockRejectedValueOnce(new Error('Read unavailable'))
+    await expect(game.store.rooms.board(game.room.ref)).rejects.toThrow('Read unavailable')
+    queries.mockImplementation(query)
+    await Promise.all([game.store.rooms.board(game.room.ref), game.store.rooms.clue(game.room.ref, game.clueId), game.store.rooms.finalClueId(game.room.ref)])
+    expect(queries).toHaveBeenCalledTimes(2)
+    await game.store.close()
+    await game.store.rooms.board(game.room.ref)
+    expect(queries).toHaveBeenCalledTimes(3)
+  })
+
+  it('evicts old generations and bypasses oversized frozen metadata instead of retaining it', async () => {
+    const game = await fixture()
+    const board = await game.store.rooms.board(game.room.ref)
+    for (let index = 0; index < 32; index++) {
+      const created = await game.rooms.create(game.pack.id, settings, 4)
+      await game.store.rooms.board(created.room.ref)
+    }
+    const queries = vi.spyOn(game.games, 'query')
+    await game.store.rooms.board(game.room.ref)
+    expect(queries).toHaveBeenCalledTimes(1)
+    const adapter = game.store.rooms as CosmosRooms
+    adapter.close()
+    const query = game.games.query.bind(game.games)
+    queries.mockImplementationOnce(async (...args) => {
+      const page = await query(...args)
+      return { ...page, items: page.items.map((doc) => ({ ...doc, padding: 'x'.repeat(16 * 1024 * 1024) })) }
+    })
+    expect(await adapter.board(game.room.ref)).toEqual(board)
+    const count = queries.mock.calls.length
+    await adapter.clue(game.room.ref, game.clueId)
+    expect(queries).toHaveBeenCalledTimes(count)
+  })
   it('supports packs, settings, creation, join/reconnect and frozen rooms independently of edited library', async () => {
     const game = await fixture()
     expect(game.store.mode).toBe('cloud')

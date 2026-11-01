@@ -297,6 +297,18 @@ export function createSqliteStore(database: Persistence | Database.Database): Do
                 await db.statement('playerInsert').run(change.player.id, current.id, change.player.nickname, change.player.teamName, change.player.reconnectTokenHash)
                 break
               case 'connection': await db.statement('playerConnected').run(change.connected ? 1 : 0, change.playerId); break
+              case 'recover': {
+                if (['finished', 'abandoned'].includes(current.status))
+                  throw new DomainError('room_ended', 'This session has ended')
+                if (!/^[a-f0-9]{64}$/.test(change.reconnectTokenHash))
+                  throw new DomainError('conflict', 'Invalid reconnect token hash')
+                const row = raw.prepare('SELECT * FROM players WHERE id = ? AND room_id = ?').get(change.playerId, current.id) as PlayerRow | undefined
+                if (!row || row.kicked) throw new DomainError('invalid_identity', 'This seat cannot be recovered')
+                if (row.connected) throw new DomainError('seat_connected', 'This player is already connected')
+                raw.prepare('UPDATE players SET reconnect_token_hash = ?, connected = 1, last_seen_at = ? WHERE id = ? AND room_id = ?')
+                  .run(change.reconnectTokenHash, command.at, change.playerId, current.id)
+                break
+              }
               case 'kick': await db.statement('playerKick').run(change.playerId, current.id); break
               case 'wager':
                 if (change.generation !== (current.state.wagerGeneration ?? 0)) throw new DomainError('stale_attempt', 'This wager has changed')

@@ -9,7 +9,7 @@ vi.mock('socket.io-client', () => ({
   io: () => client,
 }))
 
-import { emitWithAck } from './socketClient'
+import { emitWithAck, SocketAckError } from './socketClient'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -24,6 +24,20 @@ function acknowledge() {
 }
 
 describe('socket mutation request IDs', () => {
+  it('keeps server failure codes and distinguishes transport timeouts from uncoded errors', async () => {
+    client.timeout.mockReturnValue(client)
+    client.emit.mockImplementation((_event, _payload, callback) => callback(null, {
+      ok: false, error: 'Seat invalid', code: 'invalid_identity',
+    }))
+    await expect(emitWithAck('player:reconnect', {})).rejects.toMatchObject({
+      message: 'Seat invalid', code: 'invalid_identity',
+    })
+    client.emit.mockImplementation((_event, _payload, callback) => callback(new Error('timeout')))
+    await expect(emitWithAck('player:reconnect', {})).rejects.toMatchObject({ code: 'timeout' })
+    client.emit.mockImplementation((_event, _payload, callback) => callback(null, { ok: false, error: 'Temporary failure' }))
+    await expect(emitWithAck('player:reconnect', {})).rejects.toBeInstanceOf(SocketAckError)
+    await expect(emitWithAck('player:reconnect', {})).rejects.toMatchObject({ code: undefined })
+  })
   it('sends an ID alongside authoritative context without changing the caller payload', async () => {
     acknowledge()
     const payload = { command: 'pause', expectedAttempt: 2 }

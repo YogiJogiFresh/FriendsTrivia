@@ -32,7 +32,8 @@ import styles from './HostRoomPage.module.css'
 export function HostRoomPage() {
   const { roomCode = '----' } = useParams<{ roomCode: string }>()
   const navigate = useNavigate()
-  const { game, loading, error, sendCommand } = useHostRoom(roomCode)
+  const { game, loading, error, sendCommand, recoveryRequests, decideRecovery } = useHostRoom(roomCode)
+  const [pendingRecovery, setPendingRecovery] = useState<string[]>([])
   const [notice, setNotice] = useState<string | null>(null)
   const [scoreFormOpen, setScoreFormOpen] = useState(false)
   const [scorePlayerId, setScorePlayerId] = useState('')
@@ -52,6 +53,16 @@ export function HostRoomPage() {
     sendCommand(command, payload).catch((err: unknown) => {
       showNotice(err instanceof ApiError || err instanceof Error ? err.message : 'That action failed.')
     })
+  }
+  async function handleRecovery(id: string, approved: boolean) {
+    setPendingRecovery((current) => [...current, id])
+    try {
+      await decideRecovery(id, approved)
+    } catch (err) {
+      showNotice(err instanceof Error ? err.message : 'Could not update the recovery request.')
+    } finally {
+      setPendingRecovery((current) => current.filter((pending) => pending !== id))
+    }
   }
 
   if (error) {
@@ -128,7 +139,7 @@ export function HostRoomPage() {
 
       {notice ? (
         <Card className={styles.notice}>
-          <p className={styles.noticeText}>{notice}</p>
+          <p className={styles.noticeText} role="alert">{notice}</p>
         </Card>
       ) : null}
 
@@ -353,6 +364,24 @@ export function HostRoomPage() {
           </Card>
           <Card>
             <h2>Players ({players.length})</h2>
+            {recoveryRequests.length ? <div aria-label="Seat recovery requests">
+              <h3>Return requests</h3>
+              <p role="status">{recoveryRequests.length} player(s) waiting for your approval.</p>
+              {recoveryRequests.map((request) => <div key={request.id}>
+                <p><strong>{request.nickname}</strong>
+                  {request.teamName ? ` (${request.teamName})` : ''} - {request.score.toLocaleString()} points.
+                  {' '}Expires at {new Date(request.expiresAt).toLocaleTimeString()}.
+                </p>
+                <div className={styles.headerActions}>
+                  <Button disabled={pendingRecovery.includes(request.id) || game.connection !== 'connected'}
+                    onClick={() => void handleRecovery(request.id, true)}
+                    aria-label={`Approve ${request.nickname} returning to their seat`}>Approve return</Button>
+                  <Button variant="secondary" disabled={pendingRecovery.includes(request.id) || game.connection !== 'connected'}
+                    onClick={() => void handleRecovery(request.id, false)}
+                    aria-label={`Decline ${request.nickname} returning to their seat`}>Decline</Button>
+                </div>
+              </div>)}
+            </div> : null}
             <RosterList players={players} onKickPlayer={(playerId) => run('kick', { playerId })} />
           </Card>
         </div>

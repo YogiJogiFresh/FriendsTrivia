@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import type { DomainStore, LoadedRoom, RoomChange, RoomRef, RoomStore } from '../domain.js'
+import { DomainError } from '../domain.js'
 import type { GameSettings, PlayerRecord, PlayerScore, RoomRecord, RoomState } from '../game/types.js'
 import { createId, createToken, hashToken, tokenMatches } from '../ids.js'
 import { domainFrom, type DomainSource } from '../sqliteStore.js'
@@ -54,7 +55,7 @@ export class RoomRepository {
     const prior = this.tails.get(roomId) ?? Promise.resolve()
     const result = prior.then(async () => {
       const ref = await this.store.resolveId(roomId)
-      if (!ref) throw new Error('Room not found')
+      if (!ref) throw new DomainError('not_found', 'Room not found')
       const loaded = await this.store.load(ref)
       const command: Command = { loaded, initial: structuredClone(loaded.room), change: { kind: 'none' }, effects: [], operationId }
       const output = await this.commands.run(command, action)
@@ -92,8 +93,10 @@ export class RoomRepository {
     return ref ? (await this.store.load(ref)).room : undefined
   }
   async getByCode(code: string): Promise<RoomRecord | undefined> {
+    const context = this.commands.getStore()
+    if (context?.loaded.ref.code === code.trim().toUpperCase()) return context.loaded.room
     const ref = await this.store.resolveCode(code)
-    return ref ? this.getById(ref.id) : undefined
+    return ref ? (await this.store.load(ref)).room : undefined
   }
   isHost(room: RoomRecord, token: string): boolean { return tokenMatches(token, room.hostTokenHash) }
   async join(room: RoomRecord, nickname: string, teamName?: string) {
@@ -101,7 +104,7 @@ export class RoomRepository {
       const current = this.current().room
       if (current.joiningLocked || current.status === 'finished' || current.status === 'abandoned')
         throw new Error('This room is not accepting players')
-      const players = await this.listPlayers(current.id)
+      const players = await this.scores(current.id)
       if (players.length >= 50) throw new Error('This room is full')
       const teams = current.settings.teams ?? []
       const canonicalTeam = teams.find((team) => team.toLocaleLowerCase() === teamName?.trim().toLocaleLowerCase())
@@ -115,8 +118,12 @@ export class RoomRepository {
   }
   async reconnect(room: RoomRecord, playerId: string, token: string): Promise<PlayerRecord | undefined> {
     return this.runRoom(room.id, async () => {
-      const player = await this.store.loadPlayer(this.current().ref, playerId)
-      if (!player || player.kicked || !tokenMatches(token, player.reconnectTokenHash)) return undefined
+      const current = this.current()
+      if (current.room.status === 'finished' || current.room.status === 'abandoned')
+        throw new DomainError('room_ended', 'This session has ended')
+      const player = await this.store.loadPlayer(current.ref, playerId)
+      if (!player || !tokenMatches(token, player.reconnectTokenHash)) return undefined
+      if (player.kicked) throw new DomainError('player_kicked', 'You were removed from this room by the host.')
       this.setChange({ kind: 'connection', playerId, connected: true })
       return { ...player, connected: true }
     })
@@ -129,6 +136,23 @@ export class RoomRepository {
     if (!player) return undefined
     if (context.change.kind === 'kick' && context.change.playerId === id) return { ...player, kicked: true, connected: false }
     return player
+  }
+  async recoverSeat(room: RoomRecord, playerId: string, reconnectToken: string): Promise<PlayerRecord> {
+    return this.runRoom(room.id, async () => {
+      const current = this.current()
+      if (current.ref.generation !== room.ref.generation) throw new DomainError('not_found', 'Room has been replaced')
+      if (current.room.status === 'finished' || current.room.status === 'abandoned')
+        throw new DomainError('room_ended', 'This session has ended')
+      const player = await this.store.loadPlayer(current.ref, playerId)
+      if (!player || player.kicked) throw new DomainError('invalid_identity', 'This seat cannot be recovered')
+      if (player.connected) {
+        if (tokenMatches(reconnectToken, player.reconnectTokenHash)) return player
+        throw new DomainError('seat_connected', 'This player is already connected')
+      }
+      const reconnectTokenHash = hashToken(reconnectToken)
+      this.setChange({ kind: 'recover', playerId, reconnectTokenHash })
+      return { ...player, connected: true, reconnectTokenHash }
+    })
   }
   private async ref(roomId: string): Promise<RoomRef> {
     const context = this.commands.getStore()
@@ -150,6 +174,9 @@ export class RoomRepository {
     if (change?.kind === 'join') return [...scores, { playerId: change.player.id, nickname: change.player.nickname,
       teamName: change.player.teamName, connected: true, score: 0 }]
     if (change?.kind === 'kick') return scores.filter(({ playerId }) => playerId !== change.playerId)
+    if (change?.kind === 'connection' || change?.kind === 'recover')
+      return scores.map((score) => score.playerId === change.playerId
+        ? { ...score, connected: change.kind === 'recover' || change.connected } : score)
     if (change?.kind === 'settle') return change.result.activeScores
     const awards = change?.kind === 'invalidate' ? change.awards : change?.kind === 'adjustment' ? [change.award] : []
     return scores.map((score) => ({ ...score, score: score.score + awards.filter(({ playerId }) => playerId === score.playerId).reduce((sum, award) => sum + award.delta, 0) }))

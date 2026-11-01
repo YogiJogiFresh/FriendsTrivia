@@ -43,6 +43,12 @@ export function PlayPage() {
     join,
     joining,
     joinError,
+    reconnecting,
+    reconnectError,
+    retryReconnect,
+    recovery,
+    requestRecovery,
+    answerSubmitted,
     submitAnswer,
     submitWager,
     submitSpecialVote,
@@ -62,6 +68,7 @@ export function PlayPage() {
       initialNickname &&
       game &&
       game.room.teams.length === 0 &&
+      !game.players.some((player) => player.nickname.toLocaleLowerCase() === initialNickname.trim().toLocaleLowerCase()) &&
       !attemptedAutoJoin.current
     ) {
       attemptedAutoJoin.current = true
@@ -92,17 +99,22 @@ export function PlayPage() {
     )
   }
 
-  if (loading) {
+  if (loading || (reconnecting && !game)) {
     return (
       <div className={styles.shell}>
         <div className={styles.centeredState}>
-          <p>Loading room {roomCode}…</p>
+          <p>{reconnecting ? 'Reconnecting to your seat...' : `Loading room ${roomCode}…`}</p>
+          {reconnectError ? <p role="status">{reconnectError}</p> : null}
+          {reconnectError ? <Button onClick={retryReconnect}>Retry reconnect</Button> : null}
         </div>
       </div>
     )
   }
 
   if (needsNickname || !game) {
+    const matchingSeat = game?.players.find((player) =>
+      player.nickname.trim().toLocaleLowerCase() === nicknameDraft.trim().toLocaleLowerCase())
+    const waiting = recovery?.status === 'pending' || recovery?.status === 'requesting'
     function handleJoin(event: FormEvent) {
       event.preventDefault()
       if (nicknameDraft.trim().length === 0) return
@@ -123,12 +135,13 @@ export function PlayPage() {
               value={nicknameDraft}
               onChange={(event) => setNicknameDraft(event.target.value)}
               placeholder="e.g. Jamie"
-              maxLength={20}
+              maxLength={24}
+              disabled={waiting}
               autoFocus
               autoComplete="off"
               error={joinError ?? undefined}
             />
-            {game?.room.teams.length ? (
+            {game?.room.teams.length && !matchingSeat ? (
               <label className={styles.teamSelectField}>
                 <select
                   className={styles.teamSelect}
@@ -154,7 +167,27 @@ export function PlayPage() {
                 ) : null}
               </label>
             ) : null}
-            <Button
+            {matchingSeat ? (
+              <>
+                <p role="status">
+                  {matchingSeat.connected ? 'That player is already connected. Use a different nickname to join.' :
+                    'This nickname has a disconnected seat. Host approval restores its team, score, and answers.'}
+                </p>
+                {recovery ? <p role="status">{
+                  recovery.status === 'pending' ? 'Waiting for the host to approve your return. This request expires in two minutes.' :
+                  recovery.status === 'requesting' ? 'Requesting host approval...' :
+                  recovery.status === 'declined' ? 'The host declined your request.' :
+                  recovery.status === 'expired' ? 'Your request expired. You can request approval again.' :
+                  recovery.status === 'disconnected' ? 'Connection lost. Request approval again after reconnecting.' :
+                  recovery.status === 'unavailable' ? 'This seat is no longer available for recovery.' : 'Your request could not be completed.'
+                }</p> : null}
+                <Button type="button" variant="primary" size="lg" fullWidth
+                  disabled={waiting || matchingSeat.connected || reconnecting}
+                  onClick={() => void requestRecovery(nicknameDraft)}>
+                  {waiting ? 'Waiting for host...' : 'Request my seat back'}
+                </Button>
+              </>
+            ) : <Button
               type="submit"
               variant="primary"
               size="lg"
@@ -162,7 +195,7 @@ export function PlayPage() {
               disabled={joining}
             >
               {joining ? 'Joining…' : 'Join'}
-            </Button>
+            </Button>}
           </form>
         </div>
       </div>
@@ -207,6 +240,10 @@ export function PlayPage() {
       </header>
 
       {connection !== 'connected' ? <ReconnectBanner status={connection} /> : null}
+      {reconnectError ? <div className={styles.centeredState}>
+        <p role="status">{reconnectError}</p>
+        <Button onClick={retryReconnect}>Retry reconnect</Button>
+      </div> : null}
 
       {isPaused ? (
         <div className={styles.pausedOverlay} role="alert">
@@ -258,7 +295,7 @@ export function PlayPage() {
                   onChange={(event) => setWagerDraft(event.target.value)}
                   error={wagerError ?? undefined}
                 />
-                <Button type="submit" variant="primary" size="lg" fullWidth>
+                <Button type="submit" variant="primary" size="lg" fullWidth disabled={submitting || connection !== 'connected'}>
                   Lock wager
                 </Button>
               </form>
@@ -285,7 +322,7 @@ export function PlayPage() {
                       key={player.id}
                       variant="secondary"
                       size="lg"
-                      disabled={submitting}
+                      disabled={submitting || connection !== 'connected'}
                       onClick={() => void submitSpecialVote(player.id).catch(() => undefined)}
                     >
                       {player.nickname}
@@ -323,7 +360,8 @@ export function PlayPage() {
               <AnswerPanel
                 key={`${currentClue.id}:${game.room.deadline ?? ''}`}
                 clue={currentClue}
-                disabled={connection !== 'connected' || isPaused}
+                disabled={connection !== 'connected' || isPaused || answerSubmitted}
+                submitted={answerSubmitted}
                 onSubmit={handleAnswerSubmit}
               />
             ) : (

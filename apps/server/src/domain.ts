@@ -8,7 +8,7 @@ export interface RoomRef { id: string; code: string; generation: string }
 export interface AttemptRef { clueId: string; attempt: number }
 export interface AnswerWindow { attempt: AttemptRef; window: number }
 export interface LoadedRoom { ref: RoomRef; room: RoomRecord; revision: Revision; activeScores: PlayerScore[] }
-export type DomainErrorCode = 'not_found' | 'conflict' | 'duplicate_answer' | 'duplicate_wager' | 'nickname_taken' | 'room_full' | 'stale_attempt' | 'media_referenced' | 'quota_exceeded' | 'unavailable' | 'unsupported_version'
+export type DomainErrorCode = 'not_found' | 'conflict' | 'duplicate_answer' | 'duplicate_wager' | 'nickname_taken' | 'room_full' | 'stale_attempt' | 'media_referenced' | 'quota_exceeded' | 'unavailable' | 'unsupported_version' | 'invalid_identity' | 'player_kicked' | 'room_ended' | 'seat_connected'
 export class DomainError extends Error {
   constructor(readonly code: DomainErrorCode, message: string) { super(message) }
 }
@@ -100,6 +100,7 @@ export type RoomChange =
   | { kind: 'none' }
   | { kind: 'join'; player: PlayerRecord }
   | { kind: 'connection'; playerId: string; connected: boolean }
+  | { kind: 'recover'; playerId: string; reconnectTokenHash: string }
   | { kind: 'kick'; playerId: string }
   | { kind: 'submission'; attempt: AttemptRef; window: number; submission: Submission; clue: GameClue }
   | { kind: 'wager'; attempt: AttemptRef; generation: number; wager: FinalWager }

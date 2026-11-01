@@ -90,6 +90,12 @@ export class GameEngine extends EventEmitter {
     } while (cursor)
   }
   async publicSnapshot(room: RoomRecord) {
+    return (await this.snapshotPair(room, false)).public
+  }
+  async hostSnapshot(room: RoomRecord) {
+    return (await this.snapshotPair(room)).host!
+  }
+  async snapshotPair(room: RoomRecord, includeHost = true) {
     return this.readRoom(room.id, async (room) => {
 
       const board = (await this.rooms.store.board(room.ref))
@@ -103,7 +109,7 @@ export class GameEngine extends EventEmitter {
       const clueConfig = clue
         ? (clue.config)
         : undefined
-      return {
+      const publicSnapshot = {
         code: room.code,
         joinUrl: `${this.joinBaseUrl}/play/${room.code}`,
         phase: room.state.phase,
@@ -157,23 +163,15 @@ export class GameEngine extends EventEmitter {
         results: revealed && clue
           ? (await this.resultView(room)) : undefined,
       }
-
-    })
-  }
-  async hostSnapshot(room: RoomRecord) {
-    return this.readRoom(room.id, async (room) => {
-
-      const publicSnapshot = (await this.publicSnapshot(room))
-      const clue = room.state.activeClueId ? (await this.getClue(room.state.activeClueId)) : undefined
-      return {
+      const host = includeHost ? {
         ...publicSnapshot,
         activeClue: clue
           ? { ...publicSnapshot.activeClue, config: clue.config }
           : undefined,
         submissions: clue
           ? (await this.submissions(room)).map(({ playerId, elapsedMs, receivedAt }) => ({ playerId, elapsedMs, receivedAt })) : [],
-      }
-
+      } : undefined
+      return { public: publicSnapshot, host }
     })
   }
   async startGame(room: RoomRecord): Promise<RoomRecord> {
@@ -287,7 +285,7 @@ export class GameEngine extends EventEmitter {
   ]>> {
     return this.mutate(room, async (room) => {
 
-      const activePlayerIds = new Set((await this.rooms.listPlayers(room.id)).map(({ id }) => id))
+      const activePlayerIds = new Set((await this.rooms.scores(room.id)).map(({ playerId }) => playerId))
       return Object.entries(room.state.specialVotes ?? {}).filter(([voterId, targetPlayerId]) => voterId !== targetPlayerId &&
         activePlayerIds.has(voterId) &&
         activePlayerIds.has(targetPlayerId))

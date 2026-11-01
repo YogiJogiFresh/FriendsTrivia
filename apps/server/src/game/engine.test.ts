@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { openDatabase } from '../database.js'
 import { PackRepository } from '../repositories/packs.js'
 import { RoomRepository } from '../repositories/rooms.js'
@@ -89,6 +89,22 @@ async function createGame(specials: SpecialType[] = []) {
   }
 }
 describe('game engine', () => {
+  it('builds paired snapshots once without exposing host configuration or unrevealed answers', async () => {
+    const game = await createGame()
+    let room = await game.engine.startGame(game.room)
+    room = await game.engine.selectClue(room, game.clueIds[0]!)
+    const clues = vi.spyOn(game.rooms.store, 'clue')
+    const pair = await game.engine.snapshotPair(room)
+    // SQLite's receipt query also looks up its clue.
+    expect(clues).toHaveBeenCalledTimes(2)
+    expect(pair.public.activeClue).not.toHaveProperty('config')
+    expect(pair.public.activeClue?.answer).toBeUndefined()
+    expect(pair.host?.activeClue?.config).toMatchObject({ correctAnswer: 'Dancing Queen' })
+    expect(pair.public).toEqual(await game.engine.publicSnapshot(room))
+    expect(pair.host).toEqual(await game.engine.hostSnapshot(room))
+    clues.mockRestore()
+    game.engine.dispose()
+  })
   it('settles all 50 active price answers and reverses only game awards on reset', async () => {
     const game = await createGame()
     for (let index = 0; index < 48; index++) await game.rooms.join(game.room, `Player ${index}`)

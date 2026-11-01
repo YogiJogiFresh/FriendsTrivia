@@ -36,6 +36,43 @@ function parseCursor<T>(value: string): T {
   catch { throw new DomainError('conflict', 'Invalid result cursor') }
 }
 export class CosmosRooms implements RoomStore {
+  private readonly frozenCache = new Map<string, { promise: Promise<ClueDoc[] | undefined>; bytes: number }>()
+  private frozenBytes = 0
+  private cacheKey(ref: RoomRef): string { return JSON.stringify([ref.id, ref.code, ref.generation]) }
+  private evictFrozen(key: string): void {
+    const entry = this.frozenCache.get(key)
+    if (entry) this.frozenBytes -= entry.bytes
+    this.frozenCache.delete(key)
+  }
+  close(): void { this.frozenCache.clear(); this.frozenBytes = 0 }
+  private frozen(ref: RoomRef): Promise<ClueDoc[] | undefined> {
+    const key = this.cacheKey(ref), existing = this.frozenCache.get(key)
+    if (existing) {
+      this.frozenCache.delete(key)
+      this.frozenCache.set(key, existing)
+      return existing.promise
+    }
+    const limit = 16 * 1024 * 1024
+    const entry = { bytes: 0, promise: Promise.resolve().then(async () => {
+      const docs: ClueDoc[] = []
+      let bytes = 0
+      for await (const doc of pages<ClueDoc>(this.access, this.query(ref, 'frozenClue'))) {
+        bytes += Buffer.byteLength(JSON.stringify(doc))
+        if (bytes > limit) return undefined
+        docs.push(doc)
+      }
+      if (this.frozenCache.get(key) === entry) {
+        entry.bytes = bytes
+        this.frozenBytes += bytes
+        while (this.frozenCache.size > 32 || this.frozenBytes > limit) this.evictFrozen(this.frozenCache.keys().next().value!)
+      }
+      return docs
+    }) }
+    this.frozenCache.set(key, entry)
+    while (this.frozenCache.size > 32) this.evictFrozen(this.frozenCache.keys().next().value!)
+    void entry.promise.catch(() => { if (this.frozenCache.get(key) === entry) this.evictFrozen(key) })
+    return entry.promise
+  }
   private readonly writes = new Map<string, Promise<unknown>>()
   private serialize<T>(code: string, action: () => Promise<T>): Promise<T> {
     const result = (this.writes.get(code) ?? Promise.resolve()).then(action)
@@ -63,8 +100,10 @@ export class CosmosRooms implements RoomStore {
   async reservation(ref: RoomRef, allowDeleting = false): Promise<Reservation> {
     const reservation = await this.access.read<Reservation>(ref.code, 'reservation')
     if (!reservation || reservation.ref.id !== ref.id || reservation.ref.generation !== ref.generation ||
-      (!allowDeleting && reservation.status !== 'ready'))
+      (!allowDeleting && reservation.status !== 'ready')) {
+      this.evictFrozen(this.cacheKey(ref))
       throw new DomainError('not_found', 'Room not found')
+    }
     return reservation
   }
   async resolveCode(code: string): Promise<RoomRef | undefined> {
@@ -113,6 +152,9 @@ export class CosmosRooms implements RoomStore {
   }
   async board(ref: RoomRef): Promise<BoardEntry[]> {
     await this.reservation(ref)
+    const frozen = await this.frozen(ref)
+    if (frozen) return frozen.filter((doc) => !doc.clue.finalQuestion).map((doc) => clone(doc.board))
+      .sort((a, b) => a.categoryPosition - b.categoryPosition || a.cluePosition - b.cluePosition)
     const board: BoardEntry[] = []
     for await (const doc of pages<ClueDoc>(this.access, this.query(ref, 'frozenClue')))
       if (!doc.clue.finalQuestion) board.push(doc.board)
@@ -120,10 +162,14 @@ export class CosmosRooms implements RoomStore {
   }
   async clue(ref: RoomRef, id: string): Promise<GameClue | undefined> {
     await this.reservation(ref)
+    const frozen = await this.frozen(ref)
+    if (frozen) return clone(frozen.find((doc) => doc.clue.id === id)?.clue)
     return (await this.access.read<ClueDoc>(ref.code, roomItemId(ref, `clue:${id}`)))?.clue
   }
   async finalClueId(ref: RoomRef): Promise<string | undefined> {
     await this.reservation(ref)
+    const frozen = await this.frozen(ref)
+    if (frozen) return frozen.find((doc) => doc.clue.finalQuestion)?.clue.id
     const query = this.query(ref, 'frozenClue')
     query.filters.push({ field: 'clue.finalQuestion', value: true })
     return (await this.access.query<ClueDoc>(query, { limit: 1 })).items[0]?.clue.id
@@ -305,11 +351,21 @@ export class CosmosRooms implements RoomStore {
         break
       }
       case 'connection':
+      case 'recover':
       case 'kick': {
         const player = await this.access.read<PlayerDoc>(ref.code, roomItemId(ref, `player:${change.playerId}`))
         if (!player) throw new DomainError('not_found', 'Player not found')
-        const connected = change.kind === 'connection' ? change.connected && !player.player.kicked : false
-        writes.push(replace({ ...player, player: { ...player.player, connected, kicked: change.kind === 'kick' || player.player.kicked, lastSeenAt: command.at } }))
+        if (change.kind === 'recover') {
+          if (['finished', 'abandoned'].includes(next.room.status)) throw new DomainError('room_ended', 'This session has ended')
+          if (!/^[a-f0-9]{64}$/.test(change.reconnectTokenHash)) throw new DomainError('conflict', 'Invalid reconnect token hash')
+          if (player.player.kicked || !next.activeScores.some(({ playerId }) => playerId === change.playerId))
+            throw new DomainError('invalid_identity', 'This seat cannot be recovered')
+          if (player.player.connected) throw new DomainError('seat_connected', 'This player is already connected')
+        }
+        const connected = change.kind === 'recover' || (change.kind === 'connection' && change.connected && !player.player.kicked)
+        writes.push(replace({ ...player, player: { ...player.player, connected,
+          ...(change.kind === 'recover' ? { reconnectTokenHash: change.reconnectTokenHash } : {}),
+          kicked: change.kind === 'kick' || player.player.kicked, lastSeenAt: command.at } }))
         if (change.kind === 'kick') next.activeScores = next.activeScores.filter(({ playerId }) => playerId !== change.playerId)
         else {
           const score = next.activeScores.find(({ playerId }) => playerId === change.playerId)
@@ -569,6 +625,7 @@ export class CosmosRooms implements RoomStore {
       await this.access.batch(ref.code, writes)
       reservation = (await this.access.read<Reservation>(ref.code, 'reservation'))!
     }
+    this.evictFrozen(this.cacheKey(ref))
     while (true) {
       const result = await this.access.query<Document>({ pk: ref.code, filters: [
         { field: 'generation', value: ref.generation },

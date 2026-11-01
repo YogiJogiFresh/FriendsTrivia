@@ -38,7 +38,7 @@ export async function createCosmosStore(games: CosmosAccess, library: CosmosAcce
       for await (const _doc of pages(library, { filters: [] })) { /* Point/query access validates schema versions. */ }
       for await (const _doc of pages(games, { filters: [] })) { /* Unknown document kinds must also be versioned. */ }
     },
-    async close() {},
+    async close() { rooms.close() },
   }
   return store
 }

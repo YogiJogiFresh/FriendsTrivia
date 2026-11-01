@@ -101,6 +101,8 @@ export interface RawSnapshot {
   results?: RawResult[]
   /** Present only on the host-authenticated `host:snapshot` channel. */
   submissions?: RawSubmission[]
+  /** Private reconnect/approved-recovery response only, never a public broadcast. */
+  ownSubmission?: { clueId: string; attempt: number; window: number; roomGeneration: string }
 }
 
 export function expectedRoomContext(snapshot: RawSnapshot | null) {

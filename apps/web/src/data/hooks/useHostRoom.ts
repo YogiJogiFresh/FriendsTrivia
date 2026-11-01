@@ -21,6 +21,11 @@ export interface HostRoomResult {
   /** Set when there is no host session for this room in this browser, or the server rejected it. */
   error: string | null
   sendCommand: (command: string, payload?: Record<string, unknown>) => Promise<unknown>
+  recoveryRequests: HostRecoveryRequest[]
+  decideRecovery: (id: string, approved: boolean) => Promise<unknown>
+}
+export interface HostRecoveryRequest {
+  id: string; playerId: string; nickname: string; teamName: string | null; score: number; expiresAt: string
 }
 
 /**
@@ -33,6 +38,7 @@ export function useHostRoom(roomCode: string): HostRoomResult {
   const [snapshot, setSnapshot] = useState<RawSnapshot | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [recoveryRequests, setRecoveryRequests] = useState<HostRecoveryRequest[]>([])
   const connection = useConnectionStatus()
   const hostToken = getHostToken(roomCode)
 
@@ -41,6 +47,7 @@ export function useHostRoom(roomCode: string): HostRoomResult {
     setLoading(true)
     setError(null)
     setSnapshot(null)
+    setRecoveryRequests([])
 
     if (!hostToken) {
       setError('No host session was found for this room in this browser. Create the room again from Host a game.')
@@ -49,35 +56,62 @@ export function useHostRoom(roomCode: string): HostRoomResult {
     }
 
     const socket = getSocket()
+    let generation = 0
+    let inFlight = false
+    let connectionId = socket.id
 
     function connectAsHost() {
+      if (cancelled || inFlight || !socket.connected) return
+      inFlight = true
+      const attempt = generation
       emitWithAck<RawSnapshot>('host:connect', { code: roomCode, hostToken })
         .then((next) => {
-          if (!cancelled) {
+          if (!cancelled && attempt === generation) {
             setSnapshot(next)
+            setError(null)
             setLoading(false)
           }
         })
         .catch((err: Error) => {
-          if (!cancelled) {
+          if (!cancelled && attempt === generation) {
             setError(err.message)
             setLoading(false)
           }
         })
+        .finally(() => { if (attempt === generation) inFlight = false })
     }
 
     function handleSnapshot(next: RawSnapshot) {
       if (!cancelled && next.code === roomCode) setSnapshot(next)
     }
 
-    connectAsHost()
+    function handleRequests(requests: HostRecoveryRequest[]) {
+      if (!cancelled) setRecoveryRequests(requests)
+    }
+    function disconnected() {
+      generation++
+      inFlight = false
+      if (!cancelled) setRecoveryRequests([])
+    }
+    function connected() {
+      if (socket.id === connectionId && inFlight) return
+      connectionId = socket.id
+      generation++
+      inFlight = false
+      connectAsHost()
+    }
     socket.on('host:snapshot', handleSnapshot)
-    socket.on('connect', connectAsHost)
+    socket.on('host:recovery-requests', handleRequests)
+    socket.on('connect', connected)
+    socket.on('disconnect', disconnected)
+    if (socket.connected) connectAsHost()
 
     return () => {
       cancelled = true
       socket.off('host:snapshot', handleSnapshot)
-      socket.off('connect', connectAsHost)
+      socket.off('connect', connected)
+      socket.off('host:recovery-requests', handleRequests)
+      socket.off('disconnect', disconnected)
     }
   }, [roomCode, hostToken])
 
@@ -90,8 +124,12 @@ export function useHostRoom(roomCode: string): HostRoomResult {
       }),
     [snapshot],
   )
+  const decideRecovery = useCallback((id: string, approved: boolean) =>
+    emitWithAck('host:recovery-decision', {
+      recoveryId: id, approved, expectedRoomGeneration: snapshot?.roomGeneration,
+    }), [snapshot])
 
-  if (!snapshot) return { game: null, loading, error, sendCommand }
+  if (!snapshot) return { game: null, loading, error, sendCommand, recoveryRequests, decideRecovery }
 
   const game: GameState = {
     room: roomFromSnapshot(snapshot),
@@ -105,5 +143,5 @@ export function useHostRoom(roomCode: string): HostRoomResult {
     connection,
   }
 
-  return { game, loading, error, sendCommand }
+  return { game, loading, error, sendCommand, recoveryRequests, decideRecovery }
 }

@@ -21,30 +21,42 @@ export function getSocket(): Socket {
   return socket
 }
 
-export type AckResult<T> = { ok: true; data: T } | { ok: false; error: string }
+export type AckResult<T> = { ok: true; data: T } | { ok: false; error: string; code?: string }
+
+export class SocketAckError extends Error {
+  readonly code?: string
+  constructor(message: string, code?: string) {
+    super(message)
+    this.code = code
+  }
+}
 
 /** Wraps a callback-ack socket emit in a Promise, rejecting on `{ ok: false }`. */
-export function emitWithAck<T = unknown>(event: string, payload: Record<string, unknown>): Promise<T> {
-  const requestId = payload.requestId ?? (
+export function newRequestId(): string {
+  return (
     typeof crypto.randomUUID === 'function'
       ? crypto.randomUUID()
       : Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('')
   )
+}
+
+export function emitWithAck<T = unknown>(event: string, payload: Record<string, unknown>): Promise<T> {
+  const requestId = payload.requestId ?? newRequestId()
   const request = { ...payload, requestId }
   return new Promise((resolve, reject) => {
     getSocket()
       .timeout(10_000)
       .emit(event, request, (error: Error | null, result?: AckResult<T>) => {
       if (error) {
-        reject(new Error('The game server did not respond. Check your connection and try again.'))
+        reject(new SocketAckError('The game server did not respond. Check your connection and try again.', 'timeout'))
         return
       }
       if (!result) {
-        reject(new Error('The game server returned an invalid response.'))
+        reject(new SocketAckError('The game server returned an invalid response.'))
         return
       }
       if (result.ok) resolve(result.data)
-      else reject(new Error(result.error))
+      else reject(new SocketAckError(result.error, result.code))
       })
   })
 }
