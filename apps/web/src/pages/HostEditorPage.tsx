@@ -27,6 +27,7 @@ import type {
   GifProviderStatus,
 } from '../lib/apiClient'
 import { categoriesFromBoard, cluesFromSnapshot } from '../lib/snapshot'
+import { changeMultipleChoice, findCorrectChoice, hasCorrectChoice } from './multipleChoiceEditor'
 import { Badge, Button, Card, CategoryBoard, GifPicker, TextareaField, TextField } from '../components'
 import styles from './HostEditorPage.module.css'
 
@@ -60,6 +61,7 @@ interface EditableClue {
   revealMediaAssetId: string | null
   finalQuestion: boolean
   config: ServerClueConfig
+  selectedChoiceIndex: number | null
 }
 
 interface EditableCategory {
@@ -110,6 +112,7 @@ function toEditablePack(detail: ServerPackDetail): EditablePack {
         revealMediaAssetId: clue.revealMediaAssetId,
         finalQuestion: clue.finalQuestion,
         config: clue.config ?? {},
+        selectedChoiceIndex: clue.type === 'music_multiple_choice' ? findCorrectChoice(clue.config ?? {}) : null,
       })),
     })),
   }
@@ -128,7 +131,12 @@ function packInputFromState(pack: EditablePack): PackInput {
       mediaAssetId: clue.mediaAssetId,
       revealMediaAssetId: clue.revealMediaAssetId,
       finalQuestion: clue.finalQuestion,
-      config: clue.config,
+      config: clue.type === 'music_multiple_choice'
+        ? {
+          ...clue.config,
+          correctAnswer: clue.selectedChoiceIndex === null ? '' : clue.config.choices?.[clue.selectedChoiceIndex] ?? '',
+        }
+        : clue.config,
     })),
   }))
   return {
@@ -167,6 +175,7 @@ export function HostEditorPage() {
 
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [showChoiceErrors, setShowChoiceErrors] = useState(false)
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [deletingPack, setDeletingPack] = useState(false)
   const [optimizedExport, setOptimizedExport] = useState(false)
@@ -192,6 +201,7 @@ export function HostEditorPage() {
     setPackLoadError(null)
     setSaveSuccess(false)
     setSaveError(null)
+    setShowChoiceErrors(false)
     getPack(selectedPackId)
       .then((detail) => {
         if (cancelled) return
@@ -275,6 +285,23 @@ export function HostEditorPage() {
 
   async function handleSave() {
     if (!pack) return
+    const invalidCategory = pack.categories.find((category) => category.clues.some((clue) =>
+      clue.type === 'music_multiple_choice' && !hasCorrectChoice(clue.config, clue.selectedChoiceIndex),
+    ))
+    const invalidClue = invalidCategory?.clues.find((clue) =>
+      clue.type === 'music_multiple_choice' && !hasCorrectChoice(clue.config, clue.selectedChoiceIndex),
+    )
+    if (invalidCategory && invalidClue) {
+      setShowChoiceErrors(true)
+      setSaveError(null)
+      setSaveSuccess(false)
+      setEditorSection('categories')
+      setSelectedCategoryKey(invalidCategory.key)
+      setSelectedClueKey(invalidClue.key)
+      window.requestAnimationFrame(() => document.getElementById(`correct-choice-${invalidClue.key}-0`)?.focus())
+      return
+    }
+    setShowChoiceErrors(false)
     setSaving(true)
     setSaveError(null)
     setSaveSuccess(false)
@@ -406,6 +433,7 @@ export function HostEditorPage() {
           revealMediaAssetId: null,
           finalQuestion: false,
           config: defaultConfigForType(type),
+          selectedChoiceIndex: null,
         }
         return { ...category, clues: [...category.clues, newClue] }
       }),
@@ -439,7 +467,7 @@ export function HostEditorPage() {
   }
 
   function handleClueTypeChange(categoryKey: string, clueKey: string, type: ServerClueType) {
-    updateClue(categoryKey, clueKey, { type, config: defaultConfigForType(type), mediaAssetId: null })
+    updateClue(categoryKey, clueKey, { type, config: defaultConfigForType(type), mediaAssetId: null, selectedChoiceIndex: null })
   }
 
   function handleDeleteClue(categoryKey: string, clueKey: string) {
@@ -873,32 +901,43 @@ export function HostEditorPage() {
                           <p className={styles.helperText}>Set the answer used to score this clue.</p>
 
                           {clue.type === 'music_multiple_choice' ? (
-                            <div className={styles.field}>
-                              <span className={styles.statusLabel}>Answer choices (need at least two)</span>
+                            <fieldset
+                              className={`${styles.field} ${styles.choiceGroup}`}
+                              aria-describedby={`choice-help-${clue.key}${showChoiceErrors && !hasCorrectChoice(clue.config, clue.selectedChoiceIndex) ? ` choice-error-${clue.key}` : ''}`}
+                              aria-invalid={showChoiceErrors && !hasCorrectChoice(clue.config, clue.selectedChoiceIndex)}
+                            >
+                              <legend className={styles.statusLabel}>Answer choices (need at least two)</legend>
+                              <p id={`choice-help-${clue.key}`} className={styles.helperText}>Select the radio button beside the correct answer.</p>
                               {(clue.config.choices ?? ['', '']).map((choice, index) => (
                                 <div key={index} className={styles.choiceRow}>
+                                  <label className={styles.correctChoice}>
+                                    <input
+                                      id={`correct-choice-${clue.key}-${index}`}
+                                      type="radio"
+                                      name={`correct-choice-${clue.key}`}
+                                      aria-label={`Correct answer: choice ${index + 1}`}
+                                      checked={clue.selectedChoiceIndex === index}
+                                      onChange={() => updateClue(selectedCategory.key, clue.key,
+                                        changeMultipleChoice(clue.config, clue.selectedChoiceIndex, { kind: 'select', index }),
+                                      )}
+                                    />
+                                    Correct
+                                  </label>
                                   <input
                                     className={styles.choiceInput}
                                     aria-label={`Choice ${index + 1}`}
                                     value={choice}
-                                    onChange={(event) => {
-                                      const nextChoices = [...(clue.config.choices ?? [])]
-                                      nextChoices[index] = event.target.value
-                                      updateClue(selectedCategory.key, clue.key, {
-                                        config: { ...clue.config, choices: nextChoices },
-                                      })
-                                    }}
+                                    onChange={(event) => updateClue(selectedCategory.key, clue.key,
+                                      changeMultipleChoice(clue.config, clue.selectedChoiceIndex, { kind: 'rename', index, value: event.target.value }),
+                                    )}
                                   />
                                   <button
                                     type="button"
                                     className={styles.removeButton}
                                     aria-label={`Remove choice ${index + 1}`}
-                                    onClick={() => {
-                                      const nextChoices = (clue.config.choices ?? []).filter((_, i) => i !== index)
-                                      updateClue(selectedCategory.key, clue.key, {
-                                        config: { ...clue.config, choices: nextChoices },
-                                      })
-                                    }}
+                                    onClick={() => updateClue(selectedCategory.key, clue.key,
+                                      changeMultipleChoice(clue.config, clue.selectedChoiceIndex, { kind: 'remove', index }),
+                                    )}
                                     disabled={(clue.config.choices ?? []).length <= 2}
                                   >
                                     ✕
@@ -916,16 +955,12 @@ export function HostEditorPage() {
                               >
                                 + Add choice
                               </Button>
-                              <TextField
-                                label="Correct choice (must match one of the choices above exactly)"
-                                value={clue.config.correctAnswer ?? ''}
-                                onChange={(event) =>
-                                  updateClue(selectedCategory.key, clue.key, {
-                                    config: { ...clue.config, correctAnswer: event.target.value },
-                                  })
-                                }
-                              />
-                            </div>
+                              {showChoiceErrors && !hasCorrectChoice(clue.config, clue.selectedChoiceIndex) ? (
+                                <p id={`choice-error-${clue.key}`} role="alert" className={styles.errorText}>
+                                  Select a nonblank answer choice as correct before saving.
+                                </p>
+                              ) : null}
+                            </fieldset>
                           ) : null}
 
                           {clue.type === 'music_free_text' ? (

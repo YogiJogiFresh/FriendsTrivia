@@ -490,6 +490,30 @@ details[open] > .clueSummary::before {
   gap: var(--space-2);
 }
 
+.choiceGroup {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.correctChoice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--touch-target-comfortable);
+  flex-shrink: 0;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.correctChoice input {
+  width: 1.1rem;
+  height: 1.1rem;
+  margin: 0;
+  accent-color: var(--color-amber);
+}
+
 .choiceInput {
   flex: 1 1 auto;
   min-height: var(--touch-target-comfortable);
