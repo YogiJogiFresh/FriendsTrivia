@@ -1,0 +1,129 @@
+.workspace {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.filename {
+  overflow-wrap: anywhere;
+}
+
+.waveformPanel {
+  padding: var(--space-4);
+  background: var(--color-bg-raised);
+  border-radius: var(--radius-md);
+}
+
+.waveform {
+  position: relative;
+  height: 188px;
+  margin: var(--space-4) var(--space-5);
+}
+
+.waveform svg {
+  position: absolute;
+  top: 44px;
+  width: 100%;
+  height: 100px;
+}
+
+.selection {
+  fill: var(--color-amber);
+  opacity: 0.15;
+}
+
+.peaks {
+  stroke: var(--color-text-muted);
+  stroke-width: 1;
+}
+
+.handle {
+  position: absolute;
+  top: 0;
+  height: var(--touch-target-min);
+  min-width: var(--touch-target-min);
+  transform: translateX(-50%);
+  border: 1px solid var(--color-amber);
+  border-radius: var(--radius-md);
+  padding: 0;
+  background: var(--color-bg-raised);
+  color: var(--color-amber);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.handle::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  width: 2px;
+  height: 100px;
+  background: var(--color-amber);
+  pointer-events: none;
+}
+
+.handle[data-bound='end'] {
+  top: 144px;
+}
+
+.handle[data-bound='end']::after {
+  top: -101px;
+}
+
+.handle:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.output {
+  min-width: 0;
+  margin: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.output legend {
+  padding-inline: var(--space-2);
+  font-weight: var(--font-weight-bold);
+}
+
+.include {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--touch-target-comfortable);
+  cursor: pointer;
+}
+
+.include input {
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--color-amber);
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
+  gap: var(--space-3);
+  margin-block: var(--space-3);
+}
+
+.error {
+  color: var(--color-danger-strong, var(--color-danger));
+}
+
+.audio {
+  width: 100%;
+}

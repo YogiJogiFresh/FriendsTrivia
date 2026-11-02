@@ -14,7 +14,6 @@ import {
   mediaStreamUrl,
   packBundleExportUrl,
   savePack,
-  uploadMedia,
 } from '../lib/apiClient'
 import type {
   PackInput,
@@ -28,6 +27,7 @@ import type {
 } from '../lib/apiClient'
 import { categoriesFromBoard, cluesFromSnapshot } from '../lib/snapshot'
 import { changeMultipleChoice, findCorrectChoice, hasCorrectChoice } from './multipleChoiceEditor'
+import { AudioSnippetUploader } from '../components/host/AudioSnippetUploader'
 import { Badge, Button, Card, CategoryBoard, GifPicker, TextareaField, TextField } from '../components'
 import styles from './HostEditorPage.module.css'
 
@@ -182,14 +182,12 @@ export function HostEditorPage() {
 
   const [media, setMedia] = useState<ServerMediaAsset[] | null>(null)
   const [mediaError, setMediaError] = useState<string | null>(null)
-  const [uploading, setUploading] = useState(false)
   const [deletingMediaId, setDeletingMediaId] = useState<string | null>(null)
   const [mediaDirectory, setMediaDirectory] = useState<string | null>(null)
   const [gifProviders, setGifProviders] = useState<GifProviderStatus>({
     giphy: false,
     tenor: false,
   })
-  const mediaInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!selectedPackId) {
@@ -342,22 +340,6 @@ export function HostEditorPage() {
       setSaveError(err instanceof ApiError ? err.message : 'Could not delete this pack.')
     } finally {
       setDeletingPack(false)
-    }
-  }
-
-  async function handleUploadMedia(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0]
-    event.target.value = ''
-    if (!file) return
-    setUploading(true)
-    setMediaError(null)
-    try {
-      const asset = await uploadMedia(file)
-      setMedia((prev) => [asset, ...(prev ?? [])])
-    } catch (err) {
-      setMediaError(err instanceof ApiError ? err.message : 'Could not upload that file.')
-    } finally {
-      setUploading(false)
     }
   }
 
@@ -1136,19 +1118,13 @@ export function HostEditorPage() {
           <div className={styles.panelHeader}>
             <div className={styles.sectionIntro}>
               <h2 id="pack-media-heading">Media library</h2>
-              <p>Upload songs here, then attach them from a clue&apos;s Question or Answer reveal section.</p>
+              <p>Prepare song snippets here, then attach them from a clue&apos;s Question or Answer reveal section.</p>
             </div>
-            <Button variant="secondary" onClick={() => mediaInputRef.current?.click()} disabled={uploading}>
-              {uploading ? 'Uploading…' : '+ Upload song'}
-            </Button>
-            <input
-              ref={mediaInputRef}
-              type="file"
-              accept="audio/*"
-              className={styles.hiddenInput}
-              onChange={handleUploadMedia}
-            />
           </div>
+          <AudioSnippetUploader key={pack.id} active={editorSection === 'media'} onUploaded={(asset) => {
+            setMedia((current) => [asset, ...(current ?? [])])
+            setMediaError(null)
+          }} />
           {mediaDirectory ? (
             <p className={styles.mediaDirectory}>
               Song directory: <code>{mediaDirectory}</code>
