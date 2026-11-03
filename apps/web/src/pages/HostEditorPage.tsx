@@ -25,10 +25,10 @@ import type {
   ServerPackDetail,
   GifProviderStatus,
 } from '../lib/apiClient'
-import { categoriesFromBoard, cluesFromSnapshot } from '../lib/snapshot'
 import { changeMultipleChoice, findCorrectChoice, hasCorrectChoice } from './multipleChoiceEditor'
 import { AudioSnippetUploader } from '../components/host/AudioSnippetUploader'
-import { Badge, Button, Card, CategoryBoard, GifPicker, TextareaField, TextField } from '../components'
+import { PackBoardPreview } from '../components/host/PackBoardPreview'
+import { Badge, Button, Card, GifPicker, TextareaField, TextField } from '../components'
 import styles from './HostEditorPage.module.css'
 
 const clueTypeOptions: Array<{ value: ServerClueType; label: string }> = [
@@ -581,17 +581,6 @@ export function HostEditorPage() {
 
   const selectedCategory = pack.categories.find((category) => category.key === selectedCategoryKey) ?? null
   const musicMediaAssets = media ?? []
-  const previewBoard = pack.categories.flatMap((category, categoryPosition) =>
-    category.clues.flatMap((clue, cluePosition) => clue.finalQuestion ? [] : [{
-      categoryId: category.key,
-      categoryTitle: category.title || 'Untitled category',
-      categoryPosition,
-      clueId: clue.key,
-      boardValue: clue.boardValue,
-      cluePosition,
-      clueType: clue.type,
-    }]),
-  )
 
   return (
     <div>
@@ -1160,26 +1149,11 @@ export function HostEditorPage() {
       <section id="pack-preview" hidden={editorSection !== 'preview'} aria-labelledby="pack-preview-heading">
         <div className={styles.sectionIntro}>
           <h2 id="pack-preview-heading">Board preview</h2>
-          <p>This is how your board will look in a game. Unsaved edits are included; this preview does not start a game.</p>
-          {pack.categories.some((category) => category.clues.some((clue) => clue.finalQuestion)) ? (
-            <p>The Final Question plays after the board and is not shown here.</p>
-          ) : null}
+          <p>Click through clues and preview their audio and answer reveals. Unsaved edits are included; this preview does not start a game.</p>
         </div>
         <Card>
-          {previewBoard.length ? (
-            <CategoryBoard
-              categories={categoriesFromBoard(previewBoard)}
-              clues={cluesFromSnapshot({ board: previewBoard, usedClueIds: [] })}
-            />
-          ) : (
-            <div className={styles.clueEmptyState}>
-              <h3>No board clues yet</h3>
-              <p>Add a clue to a category to see it here. Final Questions are separate from the board.</p>
-              <Button variant="secondary" onClick={() => setEditorSection('categories')}>
-                Add clues
-              </Button>
-            </div>
-          )}
+          <PackBoardPreview key={pack.id} categories={pack.categories} active={editorSection === 'preview'}
+            onAddClues={() => setEditorSection('categories')} />
         </Card>
       </section>
     </div>
