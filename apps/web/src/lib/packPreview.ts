@@ -48,6 +48,8 @@ export function clueFromDraft(categories: PreviewDraftCategory[], clueKey: strin
     timerSeconds: draft.timerSeconds,
     mediaUrl: draft.mediaAssetId ? mediaStreamUrl(draft.mediaAssetId) : undefined,
     revealMediaUrl: draft.revealMediaAssetId ? mediaStreamUrl(draft.revealMediaAssetId) : undefined,
+    mediaPlayback: config.mediaPlayback,
+    revealMediaPlayback: config.revealMediaPlayback,
     revealGif: revealed ? config.revealGif : undefined,
     choices: config.choices,
     price: {

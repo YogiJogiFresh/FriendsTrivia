@@ -37,6 +37,8 @@ async function createGame(specials: SpecialType[] = []) {
             mediaAssetId: 'test-media',
             revealMediaAssetId: 'test-media',
             config: {
+              mediaPlayback: { delaySeconds: 2, playCount: 3 },
+              revealMediaPlayback: { delaySeconds: 1, playCount: 1 },
               correctAnswer: 'Dancing Queen',
               acceptedAnswers: ['Dancing Queen'],
               revealGif: {
@@ -99,6 +101,8 @@ describe('game engine', () => {
     expect(clues).toHaveBeenCalledTimes(2)
     expect(pair.public.activeClue).not.toHaveProperty('config')
     expect(pair.public.activeClue?.answer).toBeUndefined()
+    expect(pair.public.activeClue?.mediaPlayback).toEqual({ delaySeconds: 2, playCount: 3 })
+    expect(pair.public.activeClue?.revealMediaPlayback).toEqual({ delaySeconds: 1, playCount: 1 })
     expect(pair.host?.activeClue?.config).toMatchObject({ correctAnswer: 'Dancing Queen' })
     expect(pair.public).toEqual(await game.engine.publicSnapshot(room))
     expect(pair.host).toEqual(await game.engine.hostSnapshot(room))

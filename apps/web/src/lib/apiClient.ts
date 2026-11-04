@@ -5,6 +5,8 @@
  * everywhere it's used.
  */
 
+import type { AudioPlaybackSettings } from './audioPlayback'
+
 export class ApiError extends Error {
   readonly status: number
 
@@ -67,6 +69,8 @@ export interface ServerPackSummary {
 export type ServerClueType = 'music_multiple_choice' | 'music_free_text' | 'price_slider'
 
 export interface ServerClueConfig {
+  mediaPlayback?: AudioPlaybackSettings
+  revealMediaPlayback?: AudioPlaybackSettings
   choices?: string[]
   correctAnswer?: string
   acceptedAnswers?: string[]

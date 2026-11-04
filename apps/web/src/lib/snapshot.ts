@@ -7,6 +7,7 @@
  * server's snapshot shape changes — components never see the raw shape.
  */
 import type { ServerClueType } from './apiClient'
+import type { AudioPlaybackSettings } from './audioPlayback'
 import type {
   Category,
   Clue,
@@ -48,6 +49,8 @@ export interface RawActiveClue {
   special?: SpecialType
   mediaUrl?: string
   revealMediaUrl?: string
+  mediaPlayback?: AudioPlaybackSettings
+  revealMediaPlayback?: AudioPlaybackSettings
   revealGif?: RevealGif
   choices?: string[]
   price?: RawPriceConfig
@@ -201,6 +204,8 @@ export function cluesFromSnapshot(snapshot: Pick<RawSnapshot, 'board' | 'usedClu
         special: active?.special,
         mediaUrl: active?.mediaUrl,
         revealMediaUrl: active?.revealMediaUrl,
+        mediaPlayback: active?.mediaPlayback,
+        revealMediaPlayback: active?.revealMediaPlayback,
         revealGif: active?.revealGif,
         revealedAnswer: formatRevealedAnswer(active),
       }

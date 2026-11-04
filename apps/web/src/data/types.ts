@@ -8,6 +8,8 @@
  * `lib/snapshot.ts`, not any component.
  */
 
+import type { AudioPlaybackSettings } from '../lib/audioPlayback'
+
 export type ClueType = 'music-multiple-choice' | 'music-free-text' | 'price-slider'
 export type SpecialType =
   | 'double_points'
@@ -58,8 +60,10 @@ interface BaseClue {
   special?: SpecialType
   /** Present on the active clue when it has an attached song. */
   mediaUrl?: string
-  /** Optional second clip played once when the answer is revealed. */
+  /** Optional second clip played when the answer is revealed. */
   revealMediaUrl?: string
+  mediaPlayback?: AudioPlaybackSettings
+  revealMediaPlayback?: AudioPlaybackSettings
   /** Optional hosted GIF shown only after the answer is revealed. */
   revealGif?: RevealGif
   /**

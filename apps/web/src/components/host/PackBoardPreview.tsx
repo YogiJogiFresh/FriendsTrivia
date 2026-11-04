@@ -5,36 +5,13 @@ import type { PreviewDraftCategory } from '../../lib/packPreview'
 import { categoriesFromBoard, cluesFromSnapshot } from '../../lib/snapshot'
 import { CategoryBoard } from '../board/CategoryBoard'
 import { Button } from '../common'
+import { AudioPreview } from './AudioPreview'
 import styles from './PackBoardPreview.module.css'
 
 interface PackBoardPreviewProps {
   categories: PreviewDraftCategory[]
   active: boolean
   onAddClues: () => void
-}
-
-function PreviewAudio({ src, label }: { src: string; label: string }) {
-  const audioRef = useRef<HTMLAudioElement>(null)
-  const [failed, setFailed] = useState(false)
-
-  useEffect(() => {
-    const audio = audioRef.current
-    if (audio) audio.src = src
-    return () => {
-      audio?.pause()
-      audio?.removeAttribute('src')
-      audio?.load()
-    }
-  }, [src])
-
-  return (
-    <div className={styles.media}>
-      <strong>{label}</strong>
-      <audio ref={audioRef} controls preload="none" aria-label={label}
-        onError={() => setFailed(true)} onPlaying={() => setFailed(false)} />
-      {failed ? <p role="alert">Could not play this clip. Check its attachment in Categories &amp; clues.</p> : null}
-    </div>
-  )
 }
 
 function PreviewGif({ gif }: { gif: RevealGif }) {
@@ -119,8 +96,11 @@ function PreviewWorkspace({ categories, usedClueIds, onReveal, onReset, onAddClu
             <PreviewGif key={selected.clue.revealGif.url} gif={selected.clue.revealGif} />
           ) : null}
           {mediaUrl ? (
-            <PreviewAudio key={`${selected.clue.id}-${revealed}-${mediaUrl}`} src={mediaUrl}
-              label={revealed ? 'Reveal audio' : 'Clue audio'} />
+            <div className={styles.media}>
+              <AudioPreview key={`${selected.clue.id}-${revealed}-${mediaUrl}`} src={mediaUrl}
+                label={revealed ? 'Reveal audio' : 'Clue audio'} reveal={revealed}
+                settings={revealed ? selected.clue.revealMediaPlayback : selected.clue.mediaPlayback} />
+            </div>
           ) : <p className={styles.hint}>{revealed ? 'No reveal audio attached.' : 'No clue audio attached.'}</p>}
           {!revealed ? <Button onClick={reveal}>Reveal answer</Button> : null}
         </div>

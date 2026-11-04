@@ -10,6 +10,35 @@ afterEach(async () => {
     await cleanup()
 })
 describe('pack deletion', () => {
+  it('persists independent playback settings and rejects invalid settings before replacing a pack', async () => {
+    const database = openDatabase(':memory:')
+    const packs = new PackRepository(database)
+    const pack = await packs.create({ title: 'Playback' })
+    const app = Fastify()
+    await registerPackRoutes(app, packs)
+    cleanups.push(async () => { await app.close(); database.close() })
+    const config = {
+      correctPrice: 0, min: 0, max: 100,
+      mediaPlayback: { delaySeconds: 2, playCount: 3 },
+      revealMediaPlayback: { delaySeconds: 0, playCount: 1 },
+    }
+    const input = { title: 'Playback', categories: [{ title: 'Prices', clues: [
+      { type: 'price_slider', boardValue: 100, prompt: 'Price?', config },
+    ] }] }
+    expect((await app.inject({ method: 'PUT', url: `/api/packs/${pack.id}`, payload: input })).statusCode).toBe(200)
+    expect((await packs.get(pack.id))?.categories[0]?.clues[0]?.config).toEqual(config)
+    for (const key of ['mediaPlayback', 'revealMediaPlayback']) {
+      for (const invalid of [null, [], { delaySeconds: -1, playCount: 1 }, { delaySeconds: 301, playCount: 1 },
+        { delaySeconds: 0.5, playCount: 1 }, { delaySeconds: '2', playCount: 1 },
+        { delaySeconds: 0, playCount: -1 }, { delaySeconds: 0, playCount: 1.5 },
+        { delaySeconds: 0, playCount: 101 }, { delaySeconds: 0 }]) {
+        const bad = structuredClone(input)
+        Object.assign(bad.categories[0]!.clues[0]!.config, { [key]: invalid })
+        expect((await app.inject({ method: 'PUT', url: `/api/packs/${pack.id}`, payload: bad })).statusCode).toBe(400)
+      }
+    }
+    expect((await packs.get(pack.id))?.categories[0]?.clues[0]?.config).toEqual(config)
+  })
   it('permanently deletes an unused pack and its clues', async () => {
     const database = openDatabase(':memory:')
     const packs = new PackRepository(database)

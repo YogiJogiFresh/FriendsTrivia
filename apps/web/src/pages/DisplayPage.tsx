@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useRoomWatch } from '../data/hooks'
 import { useCountdown } from '../data/hooks/useCountdown'
 import { getSocket } from '../lib/socketClient'
 import { SPECIAL_DETAILS } from '../data/types'
+import { createAudioPlayback, playbackSettings } from '../lib/audioPlayback'
 import {
   Button,
   Badge,
@@ -40,6 +41,10 @@ export function DisplayPage() {
   const activeMediaUrl = gamePhase === 'REVEAL' ? currentRevealMediaUrl : currentMediaUrl
   const secondsRemaining = useCountdown(game?.room.deadline, currentClue?.timerSeconds ?? 0)
   const audioRef = useRef<HTMLAudioElement>(null)
+  const playbackRef = useRef<{ key: string; player: ReturnType<typeof createAudioPlayback> } | null>(null)
+  const audioOperation = useRef(0)
+  const revealAudio = gamePhase === 'REVEAL'
+  const { delaySeconds, playCount } = playbackSettings(revealAudio ? currentClue?.revealMediaPlayback : currentClue?.mediaPlayback, revealAudio)
   const [audioReady, setAudioReady] = useState(false)
   const [audioError, setAudioError] = useState<string | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(Boolean(document.fullscreenElement))
@@ -53,95 +58,109 @@ export function DisplayPage() {
     return () => document.removeEventListener('fullscreenchange', updateFullscreenState)
   }, [])
 
-  useEffect(() => {
+  const getPlayback = useCallback(() => {
     const audio = audioRef.current
-    if (!audio) return
-    if (!currentClueId || !activeMediaUrl) {
-      audio.loop = false
-      audio.pause()
-      audio.currentTime = 0
-      audio.removeAttribute('src')
-      audio.load()
-      return
-    }
-    const sourceChanged = audio.src !== new URL(activeMediaUrl, window.location.href).href
-    if (sourceChanged) {
+    if (!audio || !currentClueId || !activeMediaUrl) return null
+    const key = JSON.stringify([currentClueId, revealAudio, activeMediaUrl, delaySeconds, playCount])
+    if (playbackRef.current?.key !== key) {
+      playbackRef.current?.player.dispose()
       audio.src = activeMediaUrl
       audio.load()
+      audio.muted = false
+      audio.volume = 1
+      playbackRef.current = {
+        key,
+        player: createAudioPlayback(audio, { delaySeconds, playCount }, {
+          onState: (state) => {
+            if (state === 'playing' || state === 'waiting') {
+              setAudioReady(true)
+              setAudioError(null)
+            }
+          },
+          onError: () => {
+            setAudioReady(false)
+            setAudioError('Could not play audio. Select Play audio to retry, or check the linked song.')
+          },
+        }),
+      }
+    }
+    return playbackRef.current.player
+  }, [currentClueId, revealAudio, activeMediaUrl, delaySeconds, playCount])
+
+  useEffect(() => {
+    audioOperation.current += 1
+    if (gamePhase === 'PAUSED') {
+      playbackRef.current?.player.pause()
+      return
     }
     if (
       gamePhase === 'ACCEPTING_ANSWERS' ||
       gamePhase === 'FINAL_QUESTION' ||
       gamePhase === 'REVEAL'
     ) {
-      audio.loop = gamePhase !== 'REVEAL'
-      audio.muted = false
-      audio.volume = 1
-      if (sourceChanged) audio.currentTime = 0
-      void audio
-        .play()
-        .then(() => {
-          setAudioReady(true)
-          setAudioError(null)
-        })
-        .catch(() => {
-          setAudioReady(false)
-          setAudioError('Playback was blocked. Select Play audio to start the linked song.')
-        })
-    } else {
-      audio.loop = false
-      audio.pause()
-      if (gamePhase !== 'PAUSED') audio.currentTime = 0
+      if (activeMediaUrl) {
+        getPlayback()?.resume()
+        return
+      }
     }
-  }, [activeMediaUrl, currentClueId, gamePhase])
+    playbackRef.current?.player.dispose()
+    playbackRef.current = null
+    const audio = audioRef.current
+    audio?.pause()
+    audio?.removeAttribute('src')
+    audio?.load()
+  }, [getPlayback, gamePhase, activeMediaUrl])
+
+  useEffect(() => {
+    const audio = audioRef.current
+    return () => {
+      audioOperation.current += 1
+      playbackRef.current?.player.dispose()
+      playbackRef.current = null
+      audio?.removeAttribute('src')
+      audio?.load()
+    }
+  }, [])
 
   useEffect(() => {
     const socket = getSocket()
     function replay(payload: { clueId?: string }) {
-      const audio = audioRef.current
-      if (!audio || payload.clueId !== currentClueId) return
-      audio.loop = gamePhase === 'ACCEPTING_ANSWERS' || gamePhase === 'FINAL_QUESTION'
-      audio.muted = false
-      audio.volume = 1
-      audio.currentTime = 0
-      void audio
-        .play()
-        .then(() => {
-          setAudioReady(true)
-          setAudioError(null)
-        })
-        .catch(() => setAudioError('Playback was blocked. Select Play audio and try again.'))
+      if (payload.clueId !== currentClueId ||
+        !['ACCEPTING_ANSWERS', 'FINAL_QUESTION', 'REVEAL'].includes(gamePhase ?? '')) return
+      getPlayback()?.start()
     }
     socket.on('media:replay', replay)
     return () => {
       socket.off('media:replay', replay)
     }
-  }, [currentClueId, gamePhase])
+  }, [currentClueId, gamePhase, getPlayback])
 
   async function startAudio() {
     const audio = audioRef.current
     if (!audio) throw new Error('The audio player is unavailable.')
+    const operation = ++audioOperation.current
     const playingAudio =
       (gamePhase === 'ACCEPTING_ANSWERS' ||
         gamePhase === 'FINAL_QUESTION' ||
         gamePhase === 'REVEAL') &&
       Boolean(activeMediaUrl)
-    if (!playingAudio) {
-      audio.src = SILENT_AUDIO
-      audio.load()
-      audio.volume = 0.01
-    } else {
-      audio.loop = gamePhase !== 'REVEAL'
-      audio.volume = 1
-    }
+    playbackRef.current?.player.dispose()
+    playbackRef.current = null
+    audio.src = SILENT_AUDIO
+    audio.load()
+    audio.volume = 0.01
     audio.muted = false
-    audio.currentTime = 0
-    await audio.play()
-    if (!playingAudio) {
-      audio.pause()
-      audio.currentTime = 0
-      audio.volume = 1
+    try {
+      await audio.play()
+    } catch (error) {
+      if (operation !== audioOperation.current) return
+      throw error
     }
+    if (operation !== audioOperation.current) return
+    audio.pause()
+    audio.currentTime = 0
+    audio.volume = 1
+    if (playingAudio) getPlayback()?.start()
     setAudioReady(true)
     setAudioError(null)
   }
@@ -207,7 +226,7 @@ export function DisplayPage() {
 
   return (
     <div className={styles.shell}>
-      <audio ref={audioRef} src={SILENT_AUDIO} preload="auto" aria-label="Trivia music clip" />
+      <audio ref={audioRef} preload="auto" aria-label="Trivia music clip" />
       <header className={styles.topBar}>
         <span className={styles.brand}>FriendsTrivia</span>
         <div className={styles.topBarRight}>

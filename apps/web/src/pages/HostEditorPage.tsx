@@ -28,6 +28,9 @@ import type {
 import { changeMultipleChoice, findCorrectChoice, hasCorrectChoice } from './multipleChoiceEditor'
 import { AudioSnippetUploader } from '../components/host/AudioSnippetUploader'
 import { PackBoardPreview } from '../components/host/PackBoardPreview'
+import { AudioPlaybackFields } from '../components/host/AudioPlaybackFields'
+import { AudioPreview } from '../components/host/AudioPreview'
+import { validPlayback } from '../lib/audioPlayback'
 import { Badge, Button, Card, GifPicker, TextareaField, TextField } from '../components'
 import styles from './HostEditorPage.module.css'
 
@@ -283,6 +286,18 @@ export function HostEditorPage() {
 
   async function handleSave() {
     if (!pack) return
+    for (const category of pack.categories) {
+      const clue = category.clues.find((entry) => [entry.config.mediaPlayback, entry.config.revealMediaPlayback]
+        .some((settings) => settings !== undefined && !validPlayback(settings)))
+      if (clue) {
+        setSaveError('Fix the song delay or play count in this clue before saving.')
+        setSaveSuccess(false)
+        setEditorSection('categories')
+        setSelectedCategoryKey(category.key)
+        setSelectedClueKey(clue.key)
+        return
+      }
+    }
     const invalidCategory = pack.categories.find((category) => category.clues.some((clue) =>
       clue.type === 'music_multiple_choice' && !hasCorrectChoice(clue.config, clue.selectedChoiceIndex),
     ))
@@ -852,8 +867,14 @@ export function HostEditorPage() {
                               <Button variant="ghost" onClick={() => setEditorSection('media')}>
                                 Upload or manage songs
                               </Button>
+                              <AudioPlaybackFields value={clue.config.mediaPlayback}
+                                onChange={(mediaPlayback) => updateClue(selectedCategory.key, clue.key, {
+                                  config: { ...clue.config, mediaPlayback },
+                                })} />
                               {clue.mediaAssetId ? (
-                                <audio controls src={mediaStreamUrl(clue.mediaAssetId)} className={styles.audioPreview} />
+                                <AudioPreview src={mediaStreamUrl(clue.mediaAssetId)} label="Clue audio"
+                                  settings={clue.config.mediaPlayback}
+                                  active={editorSection === 'categories' && selectedClueKey === clue.key} />
                               ) : null}
                             </div>
                           ) : null}
@@ -1043,11 +1064,15 @@ export function HostEditorPage() {
                                   </option>
                                 ))}
                               </select>
+                              <AudioPlaybackFields value={clue.config.revealMediaPlayback} reveal
+                                onChange={(revealMediaPlayback) => updateClue(selectedCategory.key, clue.key, {
+                                  config: { ...clue.config, revealMediaPlayback },
+                                })} />
                               {clue.revealMediaAssetId ? (
-                                <audio
-                                  controls
+                                <AudioPreview
                                   src={mediaStreamUrl(clue.revealMediaAssetId)}
-                                  className={styles.audioPreview}
+                                  label="Reveal audio" settings={clue.config.revealMediaPlayback} reveal
+                                  active={editorSection === 'categories' && selectedClueKey === clue.key}
                                 />
                               ) : null}
                             </div>

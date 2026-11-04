@@ -86,7 +86,9 @@ describe('portable pack bundles', () => {
               prompt: 'Name it',
               mediaAssetId: song.id,
               revealMediaAssetId: song.id,
-              config: { correctAnswer: 'Answer' },
+              config: { correctAnswer: 'Answer',
+                mediaPlayback: { delaySeconds: 2, playCount: 3 },
+                revealMediaPlayback: { delaySeconds: 1, playCount: 1 } },
             },
           ],
         },
@@ -103,7 +105,7 @@ describe('portable pack bundles', () => {
     const imported = await importPackBundle(bundle, targetPacks, targetMedia, targetRoot) as {
       status: string
       categories: Array<{
-        clues: Array<{ mediaAssetId: string; revealMediaAssetId: string }>
+        clues: Array<{ mediaAssetId: string; revealMediaAssetId: string; config: unknown }>
       }>
     }
 
@@ -112,6 +114,10 @@ describe('portable pack bundles', () => {
     expect(importedClue?.mediaAssetId).toBeTruthy()
     expect(importedClue?.mediaAssetId).not.toBe(song.id)
     expect(importedClue?.revealMediaAssetId).toBe(importedClue?.mediaAssetId)
+    expect(importedClue?.config).toMatchObject({
+      mediaPlayback: { delaySeconds: 2, playCount: 3 },
+      revealMediaPlayback: { delaySeconds: 1, playCount: 1 },
+    })
     const importedMedia = await targetMedia.get(importedClue?.mediaAssetId ?? '')
     expect(importedMedia).toMatchObject({
       originalName: 'Opening.mp3',

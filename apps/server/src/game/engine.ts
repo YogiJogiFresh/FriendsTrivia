@@ -138,6 +138,8 @@ export class GameEngine extends EventEmitter {
             revealMediaUrl: !votingHidden && visibleClue.revealMediaAssetId
               ? `/api/media/${visibleClue.revealMediaAssetId}/stream${this.scopeMediaToRoom ? `?roomCode=${encodeURIComponent(room.code)}` : ''}`
               : undefined,
+            mediaPlayback: !votingHidden ? clueConfig?.mediaPlayback : undefined,
+            revealMediaPlayback: !votingHidden ? clueConfig?.revealMediaPlayback : undefined,
             revealGif: revealed && isRevealGif(clueConfig?.revealGif)
               ? clueConfig.revealGif
               : undefined,

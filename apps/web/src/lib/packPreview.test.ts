@@ -36,11 +36,13 @@ describe('pack draft preview', () => {
   it('maps current media and hides answers and GIFs until reveal without changing the draft', () => {
     const gif = { provider: 'url' as const, url: 'https://example.com/a.gif',
       previewUrl: 'https://example.com/a.gif', sourceUrl: 'https://example.com', alt: 'Celebration' }
-    const draft = categories({ config: { correctAnswer: 'New answer', revealGif: gif } })
+    const draft = categories({ config: { correctAnswer: 'New answer', revealGif: gif,
+      mediaPlayback: { delaySeconds: 2, playCount: 3 }, revealMediaPlayback: { delaySeconds: 1, playCount: 1 } } })
     const original = structuredClone(draft)
     expect(clueFromDraft(draft, clue.key, false)?.clue).toMatchObject({
       prompt: 'Unsaved question', mediaUrl: '/api/media/question%20clip/stream',
       revealMediaUrl: '/api/media/reveal%20clip/stream', revealedAnswer: undefined, revealGif: undefined,
+      mediaPlayback: { delaySeconds: 2, playCount: 3 }, revealMediaPlayback: { delaySeconds: 1, playCount: 1 },
     })
     expect(clueFromDraft(draft, clue.key, true)?.clue).toMatchObject({
       revealedAnswer: 'New answer', revealGif: gif,

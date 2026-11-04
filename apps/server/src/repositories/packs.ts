@@ -71,6 +71,20 @@ export function validatePack(input: {
       const config = clue.config && typeof clue.config === 'object'
         ? (clue.config as Record<string, unknown>)
         : {}
+      for (const key of ['mediaPlayback', 'revealMediaPlayback']) {
+        const playback = config[key]
+        if (playback === undefined) continue
+        if (!playback || typeof playback !== 'object' || Array.isArray(playback)) {
+          throw new Error('Song playback settings are invalid')
+        }
+        const { delaySeconds, playCount } = playback as Record<string, unknown>
+        if (typeof delaySeconds !== 'number' || !Number.isInteger(delaySeconds) || delaySeconds < 0 || delaySeconds > 300) {
+          throw new Error('Song delay must be a whole number between 0 and 300 seconds')
+        }
+        if (typeof playCount !== 'number' || !Number.isInteger(playCount) || playCount < 0 || playCount > 100) {
+          throw new Error('Song play count must be a whole number between 0 and 100 (0 loops)')
+        }
+      }
       if (config.revealGif !== undefined && !isRevealGif(config.revealGif)) {
         throw new Error('The answer reveal GIF is invalid')
       }
