@@ -4,6 +4,7 @@ import {
   parseTimestamp, slicePcm, sourceType, validRange, waveformPeaks,
 } from './audioSnippets'
 import type { DecodedSong } from './audioSnippets'
+import type { AudioLevelInfo } from './audioLevels'
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
@@ -66,7 +67,7 @@ describe('audio snippet preparation', () => {
 class FakeWorker {
   static latest: FakeWorker
   onerror?: () => void
-  onmessage?: (event: { data: { bytes?: ArrayBuffer; error?: string } }) => void
+  onmessage?: (event: { data: { bytes?: ArrayBuffer; levels?: AudioLevelInfo; error?: string } }) => void
   message?: { channels: Float32Array[]; sampleRate: number }
   terminate = vi.fn()
   constructor() { FakeWorker.latest = this }
@@ -80,8 +81,10 @@ describe('MP3 worker lifecycle', () => {
     const worker = FakeWorker.latest
     expect(worker.message?.channels[0].length).toBe(2)
     expect(worker.message?.channels[1].length).toBe(2)
-    worker.onmessage!({ data: { bytes: new Uint8Array([255, 251, 144]).buffer } })
-    const blob = await result
+    const levels = { inputDb: -20, requestedDb: 2, appliedDb: 2, peakLimited: false, boostLimited: false }
+    worker.onmessage!({ data: { bytes: new Uint8Array([255, 251, 144]).buffer, levels } })
+    const { blob, levels: measured } = await result
+    expect(measured).toEqual(levels)
     expect(blob.type).toBe('audio/mpeg')
     expect([...new Uint8Array(await blob.arrayBuffer())]).toEqual([255, 251, 144])
     expect(worker.terminate).toHaveBeenCalledOnce()

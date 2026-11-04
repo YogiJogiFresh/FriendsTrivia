@@ -1,34 +1,42 @@
-import { useEffect, useRef, useState } from 'react'
-import type { KeyboardEvent, PointerEvent } from 'react'
-import { ApiError, uploadMedia } from '../../lib/apiClient'
+import { useEffect, useImperativeHandle, useRef, useState } from 'react'
+import type { KeyboardEvent, PointerEvent, Ref } from 'react'
+import { ApiError, downloadMedia, uploadMedia } from '../../lib/apiClient'
 import type { ServerMediaAsset } from '../../lib/apiClient'
 import {
   decodeSong, encodeSnippet, estimatedMp3Bytes, formatTimestamp, outputName,
   parseTimestamp, sourceType, validRange,
 } from '../../lib/audioSnippets'
 import type { DecodedSong } from '../../lib/audioSnippets'
+import { validAudioLevels } from '../../lib/audioLevels'
+import type { AudioLevelInfo, AudioLevelSettings } from '../../lib/audioLevels'
+import { AudioLevelFields } from './AudioLevelFields'
 import { Button, TextField } from '../common'
 import styles from './AudioSnippetUploader.module.css'
 
 type Status = 'idle' | 'encoding' | 'uploading' | 'uploaded' | 'failed' | 'uncertain'
 interface Output {
   label: string
+  original?: boolean
   enabled: boolean
   name: string
   start: string
   end: string
   blob?: Blob
+  settings: AudioLevelSettings
+  levels?: AudioLevelInfo
   status: Status
   error?: string
 }
 
 const sizeLabel = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(2)} MB`
-const rangeFor = (output: Output) => ({ start: parseTimestamp(output.start), end: parseTimestamp(output.end) })
 const locked = (output: Output) => output.status === 'uploaded' || output.status === 'uncertain'
 
-export function AudioSnippetUploader({ active, onUploaded }: {
+export interface AudioSnippetUploaderHandle { adjust: (asset: ServerMediaAsset) => void }
+
+export function AudioSnippetUploader({ active, onUploaded, ref }: {
   active: boolean
-  onUploaded: (asset: ServerMediaAsset) => void
+  onUploaded: (asset: ServerMediaAsset, replaces?: ServerMediaAsset) => void
+  ref?: Ref<AudioSnippetUploaderHandle>
 }) {
   const [file, setFile] = useState<File | null>(null)
   const [song, setSong] = useState<DecodedSong | null>(null)
@@ -37,6 +45,7 @@ export function AudioSnippetUploader({ active, onUploaded }: {
   const [busy, setBusy] = useState<'loading' | 'encoding' | 'uploading' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState('')
+  const [sourceAsset, setSourceAsset] = useState<ServerMediaAsset | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
   const playingAudio = useRef<HTMLAudioElement | null>(null)
@@ -46,6 +55,10 @@ export function AudioSnippetUploader({ active, onUploaded }: {
   const generation = useRef(0)
   const controller = useRef<AbortController | null>(null)
   const dragging = useRef<'start' | 'end' | null>(null)
+
+  const rangeFor = (output: Output) => sourceAsset && song
+    ? { start: 0, end: song.duration }
+    : { start: parseTimestamp(output.start), end: parseTimestamp(output.end) }
 
   function stopPreview() {
     audioRef.current?.pause()
@@ -79,6 +92,7 @@ export function AudioSnippetUploader({ active, onUploaded }: {
     controller.current?.abort()
     stopPreview()
     setFile(null)
+    setSourceAsset(null)
     setSong(null)
     setOutputs([])
     setBusy(null)
@@ -86,7 +100,16 @@ export function AudioSnippetUploader({ active, onUploaded }: {
     setNotice('')
   }
 
+  function canChangeSource() {
+    if (busy === 'uploading') {
+      setError('Wait for uploading to finish before changing songs.')
+      return false
+    }
+    return !file || window.confirm('Discard this preparation draft? Already uploaded songs will stay in the library.')
+  }
+
   async function chooseFile(source: File) {
+    if (!canChangeSource()) return
     cancel()
     try { sourceType(source) } catch (failure) {
       setError((failure as Error).message)
@@ -96,9 +119,9 @@ export function AudioSnippetUploader({ active, onUploaded }: {
     setFile(source)
     setActiveClip(0)
     setOutputs([
-      { label: 'Question clip', enabled: true, name: `${base}-question`, start: '', end: '', status: 'idle' },
-      { label: 'Answer reveal clip', enabled: true, name: `${base}-reveal`, start: '', end: '', status: 'idle' },
-      { label: 'Original song', enabled: false, name: base, start: '', end: '', status: 'idle', blob: source },
+      { label: 'Question clip', enabled: true, name: `${base}-question`, start: '', end: '', status: 'idle', settings: { normalize: false, gainDb: 0 } },
+      { label: 'Answer reveal clip', enabled: true, name: `${base}-reveal`, start: '', end: '', status: 'idle', settings: { normalize: false, gainDb: 0 } },
+      { label: 'Original song', original: true, enabled: false, name: base, start: '', end: '', status: 'idle', blob: source, settings: { normalize: false, gainDb: 0 } },
     ])
     setBusy('loading')
     const version = generation.current
@@ -116,16 +139,58 @@ export function AudioSnippetUploader({ active, onUploaded }: {
     }
   }
 
+  async function chooseExisting(asset: ServerMediaAsset) {
+    if (!canChangeSource()) return
+    cancel()
+    setSourceAsset(asset)
+    const version = generation.current
+    const work = new AbortController()
+    controller.current = work
+    setBusy('loading')
+    const timeout = setTimeout(() => work.abort(), 20000)
+    try {
+      sourceType({ name: asset.originalName, size: asset.sizeBytes })
+      const source = await downloadMedia(asset, work.signal)
+      clearTimeout(timeout)
+      if (version !== generation.current) return
+      sourceType(source)
+      setFile(source)
+      setActiveClip(0)
+      setOutputs([{
+        label: 'Adjusted song', enabled: true, name: `${source.name.replace(/\.[^.]+$/, '').slice(0, 111)}-adjusted`,
+        start: '', end: '', status: 'idle', settings: { normalize: false, gainDb: 0 },
+      }])
+      const decoded = await decodeSong(source, work.signal)
+      if (version === generation.current) setSong(decoded)
+    } catch (failure) {
+      if (version === generation.current) setError(work.signal.aborted
+        ? 'The library song took too long to download. Try again.'
+        : (failure as Error).message)
+    } finally {
+      clearTimeout(timeout)
+      if (version === generation.current) setBusy(null)
+    }
+  }
+
+  useImperativeHandle(ref, () => ({ adjust: (asset) => { void chooseExisting(asset) } }))
+
+  function editLevels(index: number, settings: AudioLevelSettings) {
+    stopPreview()
+    setNotice('')
+    patch(index, { settings, blob: undefined, levels: undefined, status: 'idle', error: undefined })
+  }
+
   function editRange(index: number, field: 'start' | 'end', value: string) {
     stopPreview()
     setNotice('')
-    patch(index, { [field]: value, blob: undefined, status: 'idle', error: undefined })
+    patch(index, { [field]: value, blob: undefined, levels: undefined, status: 'idle', error: undefined })
   }
 
-  function clipError(output: Output, index: number): string | null {
-    try { outputName(output.name, index === 2 ? `.${file!.name.split('.').pop()!.toLowerCase()}` : '.mp3') }
+  function clipError(output: Output): string | null {
+    try { outputName(output.name, output.original ? `.${file!.name.split('.').pop()!.toLowerCase()}` : '.mp3') }
     catch (failure) { return (failure as Error).message }
-    if (index !== 2 && (!song || !validRange(rangeFor(output), song.duration))) {
+    if (!output.original && !validAudioLevels(output.settings)) return 'Enter a volume adjustment from -12 to +12 dB in half-dB steps.'
+    if (!output.original && (!song || !validRange(rangeFor(output), song.duration))) {
       return 'Set both start and end within the song, with the end after the start.'
     }
     return null
@@ -133,7 +198,7 @@ export function AudioSnippetUploader({ active, onUploaded }: {
 
   async function preview(index: number) {
     const output = outputs[index]
-    const problem = clipError(output, index)
+    const problem = clipError(output)
     if (problem) { patch(index, { error: problem }); return }
     stopPreview()
     setNotice('')
@@ -142,9 +207,11 @@ export function AudioSnippetUploader({ active, onUploaded }: {
     const work = new AbortController()
     controller.current = work
     try {
-      const blob = output.blob ?? await encodeSnippet(song!, rangeFor(output), work.signal)
+      const encoded = output.blob ? { blob: output.blob, levels: output.levels }
+        : await encodeSnippet(song!, rangeFor(output), work.signal, output.settings)
+      const { blob } = encoded
       if (version !== generation.current || !activeRef.current) return
-      patch(index, { blob, error: undefined })
+      patch(index, { ...encoded, error: undefined })
       previewUrl.current = URL.createObjectURL(blob)
       const audio = audioRef.current!
       playingAudio.current = audio
@@ -168,9 +235,9 @@ export function AudioSnippetUploader({ active, onUploaded }: {
     const names = new Set<string>()
     let invalid = false
     for (const { output, index } of outputs.map((output, index) => ({ output, index })).filter(({ output }) => output.enabled)) {
-      const problem = clipError(output, index)
+      const problem = clipError(output)
       if (problem) { patch(index, { error: problem }); invalid = true; continue }
-      const name = outputName(output.name, index === 2 ? `.${file.name.split('.').pop()!.toLowerCase()}` : '.mp3').toLocaleLowerCase()
+      const name = outputName(output.name, output.original ? `.${file.name.split('.').pop()!.toLowerCase()}` : '.mp3').toLocaleLowerCase()
       if (names.has(name)) { patch(index, { error: 'Give each selected file a different name.' }); invalid = true }
       names.add(name)
     }
@@ -181,20 +248,24 @@ export function AudioSnippetUploader({ active, onUploaded }: {
     const work = new AbortController()
     controller.current = work
     setBusy('uploading')
+    let uploaded = 0
     for (const { output, index } of selected) {
       let sending = false
       try {
         patch(index, { status: output.blob ? 'uploading' : 'encoding', error: undefined })
-        const blob = output.blob ?? await encodeSnippet(song!, rangeFor(output), work.signal)
+        const encoded = output.blob ? { blob: output.blob, levels: output.levels }
+          : await encodeSnippet(song!, rangeFor(output), work.signal, output.settings)
+        const { blob } = encoded
         if (version !== generation.current) return
-        patch(index, { blob, status: 'uploading' })
-        const extension = index === 2 ? `.${file.name.split('.').pop()!.toLowerCase()}` : '.mp3'
-        const upload = new File([blob], outputName(output.name, extension), { type: index === 2 ? sourceType(file) : 'audio/mpeg' })
+        patch(index, { ...encoded, status: 'uploading' })
+        const extension = output.original ? `.${file.name.split('.').pop()!.toLowerCase()}` : '.mp3'
+        const upload = new File([blob], outputName(output.name, extension), { type: output.original ? sourceType(file) : 'audio/mpeg' })
         sending = true
         const asset = await uploadMedia(upload)
         if (version !== generation.current) return
         patch(index, { status: 'uploaded' })
-        onUploaded(asset)
+        onUploaded(asset, sourceAsset ?? undefined)
+        uploaded += 1
       } catch (failure) {
         if (version !== generation.current) return
         const uncertain = sending && (!(failure instanceof ApiError) || failure.status === 0 || failure.status >= 500)
@@ -208,7 +279,10 @@ export function AudioSnippetUploader({ active, onUploaded }: {
     }
     if (version === generation.current) {
       setBusy(null)
-      setNotice('Upload attempt finished. Uploaded files are already in the library; retry only failed files.')
+      setNotice(sourceAsset ? uploaded
+        ? 'Adjusted copy uploaded. Matching attachments were updated in this pack draft only; choose Save changes to persist them.'
+        : 'No adjusted copy was confirmed. Attachments were not changed; check the output status before retrying.'
+        : 'Upload attempt finished. Uploaded files are already in the library; retry only failed files.')
     }
   }
 
@@ -246,11 +320,11 @@ export function AudioSnippetUploader({ active, onUploaded }: {
     moveHandle(field, value)
   }
 
-  const selectedBytes = outputs.reduce((total, output, index) => {
+  const selectedBytes = outputs.reduce((total, output) => {
     if (!output.enabled) return total
     if (output.blob) return total + output.blob.size
     const clipRange = rangeFor(output)
-    return total + (song && validRange(clipRange, song.duration) && index !== 2 ? estimatedMp3Bytes(clipRange) : 0)
+    return total + (song && validRange(clipRange, song.duration) && !output.original ? estimatedMp3Bytes(clipRange) : 0)
   }, 0)
 
   return (
@@ -266,14 +340,22 @@ export function AudioSnippetUploader({ active, onUploaded }: {
         }} />
       </div>
       {error ? <p role="alert" className={styles.error}>{error}</p> : null}
+      {sourceAsset && !file ? (
+        <div>
+          <h3 className={styles.filename}>Adjust volume: {sourceAsset.originalName}</h3>
+          {busy === 'loading' ? <p role="status">Downloading library song...</p> : null}
+          <Button variant="ghost" onClick={cancel}>Cancel</Button>
+        </div>
+      ) : null}
       {file ? (
         <>
           <div>
             <h3 className={styles.filename}>{file.name}</h3>
-            <p>{sizeLabel(file.size)} original{song ? ` · ${formatTimestamp(song.duration)}` : ''}. Nothing uploads until you choose Upload selected files.</p>
+            <p>{sizeLabel(file.size)} original{song ? ` · ${formatTimestamp(song.duration)}` : ''}.
+              {sourceAsset ? ' Saves a new MP3 copy and updates matching attachments in this pack draft. The original and other packs stay unchanged; choose Save changes afterward.' : ' Nothing uploads until you choose Upload selected files.'}</p>
           </div>
           {busy === 'loading' ? <p role="status">Reading song and preparing waveform…</p> : null}
-          {song ? (
+          {song && !sourceAsset ? (
             <div className={styles.waveformPanel}>
               <div className={styles.actions} role="group" aria-label="Clip to edit on waveform">
                 {outputs.slice(0, 2).map((output, index) => (
@@ -313,15 +395,15 @@ export function AudioSnippetUploader({ active, onUploaded }: {
           {outputs.map((output, index) => (
             <fieldset key={output.label} className={styles.output}>
               <legend>{output.label}</legend>
-              <label className={styles.include}>
+              {!sourceAsset ? <label className={styles.include}>
                 <input type="checkbox" checked={output.enabled} disabled={Boolean(busy) || locked(output)}
                   onChange={(event) => { stopPreview(); patch(index, { enabled: event.target.checked, error: undefined }) }} />
-                {index === 2 ? 'Also upload original song' : `Include ${output.label.toLowerCase()}`}
-              </label>
+                {output.original ? 'Also upload original song' : `Include ${output.label.toLowerCase()}`}
+              </label> : null}
               {output.enabled ? (
                 <>
                   <div className={styles.fields}>
-                    {index !== 2 ? (
+                    {!output.original && !sourceAsset ? (
                       <>
                         <TextField label={`${output.label} start`} placeholder="0:00.00" value={output.start}
                           disabled={Boolean(busy) || locked(output)} onChange={(event) => editRange(index, 'start', event.target.value)} />
@@ -330,14 +412,16 @@ export function AudioSnippetUploader({ active, onUploaded }: {
                       </>
                     ) : null}
                     <TextField label={`${output.label} filename`} value={output.name} maxLength={124}
-                      hint={`Extension: ${index === 2 ? `.${file.name.split('.').pop()!.toLowerCase()}` : '.mp3'}`}
+                      hint={`Extension: ${output.original ? `.${file.name.split('.').pop()!.toLowerCase()}` : '.mp3'}`}
                       disabled={Boolean(busy) || locked(output)} onChange={(event) => patch(index, { name: event.target.value, error: undefined })} />
                   </div>
-                  {index !== 2 && song && validRange(rangeFor(output), song.duration) ? (
+                  {!output.original ? <AudioLevelFields label={output.label} value={output.settings} levels={output.levels}
+                    disabled={Boolean(busy) || locked(output)} onChange={(settings) => editLevels(index, settings)} /> : null}
+                  {!output.original && song && validRange(rangeFor(output), song.duration) ? (
                     <p>{formatTimestamp(rangeFor(output).end - rangeFor(output).start)} clip · {sizeLabel(output.blob?.size ?? estimatedMp3Bytes(rangeFor(output)))} {output.blob ? 'encoded' : 'estimated'} · MP3, 128 kbps</p>
                   ) : null}
                   <div className={styles.actions}>
-                    <Button variant="ghost" disabled={Boolean(busy) || index !== 2 && !song} onClick={() => void preview(index)}>
+                    <Button variant="ghost" disabled={Boolean(busy) || !output.original && !song} onClick={() => void preview(index)}>
                       Preview {output.label.toLowerCase()}
                     </Button>
                     <span role="status">{output.status === 'idle' ? '' : output.status === 'uploaded' ? 'Uploaded — available in the library' : `${output.status[0].toUpperCase()}${output.status.slice(1)}`}</span>
@@ -353,7 +437,7 @@ export function AudioSnippetUploader({ active, onUploaded }: {
             {selectedBytes >= file.size ? ' These selections will not save space compared with the original.' : ''}</p>
           <div className={styles.actions}>
             <Button disabled={Boolean(busy)} onClick={() => void uploadSelected()}>
-              {busy === 'uploading' ? 'Preparing and uploading…' : 'Upload selected files'}
+              {busy === 'uploading' ? 'Preparing and uploading…' : sourceAsset ? 'Save adjusted copy' : 'Upload selected files'}
             </Button>
             <Button variant="ghost" disabled={busy === 'uploading'} onClick={cancel}>Cancel</Button>
           </div>

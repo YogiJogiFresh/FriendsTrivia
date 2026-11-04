@@ -1,11 +1,12 @@
 /**
  * Thin REST client for the FriendsTrivia server described in
- * `apps/server/src/routes/*`. Every call goes through `request()` so error
+ * `apps/server/src/routes/*`. JSON calls go through `request()` so error
  * surfacing (network failure vs. non-2xx vs. malformed JSON) is consistent
  * everywhere it's used.
  */
 
 import type { AudioPlaybackSettings } from './audioPlayback'
+import { MAX_SOURCE_BYTES } from './audioSnippets'
 
 export class ApiError extends Error {
   readonly status: number
@@ -237,6 +238,29 @@ export function deleteMedia(id: string): Promise<void> {
 
 export function mediaStreamUrl(id: string): string {
   return `/api/media/${encodeURIComponent(id)}/stream`
+}
+
+export async function downloadMedia(asset: ServerMediaAsset, signal: AbortSignal): Promise<File> {
+  const response = await fetch(mediaStreamUrl(asset.id), { signal, credentials: 'same-origin' })
+  if (!response.ok) throw new ApiError(await parseErrorBody(response), response.status)
+  const reader = response.body?.getReader()
+  if (!reader) throw new Error('Could not read the library song.')
+  const chunks: Uint8Array<ArrayBuffer>[] = []
+  let bytes = 0
+  try {
+    if (Number(response.headers.get('Content-Length')) > MAX_SOURCE_BYTES) throw new Error('Choose a song up to 50 MB.')
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      bytes += value.byteLength
+      if (bytes > MAX_SOURCE_BYTES) throw new Error('Choose a song up to 50 MB.')
+      chunks.push(value)
+    }
+    return new File(chunks, asset.originalName, { type: asset.mimeType })
+  } finally {
+    await reader.cancel().catch(() => undefined)
+    reader.releaseLock()
+  }
 }
 
 // ---- Rooms ---------------------------------------------------------------

@@ -27,6 +27,7 @@ import type {
 } from '../lib/apiClient'
 import { changeMultipleChoice, findCorrectChoice, hasCorrectChoice } from './multipleChoiceEditor'
 import { AudioSnippetUploader } from '../components/host/AudioSnippetUploader'
+import type { AudioSnippetUploaderHandle } from '../components/host/AudioSnippetUploader'
 import { PackBoardPreview } from '../components/host/PackBoardPreview'
 import { AudioPlaybackFields } from '../components/host/AudioPlaybackFields'
 import { AudioPreview } from '../components/host/AudioPreview'
@@ -184,6 +185,7 @@ export function HostEditorPage() {
   const [optimizedExport, setOptimizedExport] = useState(false)
 
   const [media, setMedia] = useState<ServerMediaAsset[] | null>(null)
+  const audioPreparationRef = useRef<AudioSnippetUploaderHandle>(null)
   const [mediaError, setMediaError] = useState<string | null>(null)
   const [deletingMediaId, setDeletingMediaId] = useState<string | null>(null)
   const [mediaDirectory, setMediaDirectory] = useState<string | null>(null)
@@ -1135,9 +1137,20 @@ export function HostEditorPage() {
               <p>Prepare song snippets here, then attach them from a clue&apos;s Question or Answer reveal section.</p>
             </div>
           </div>
-          <AudioSnippetUploader key={pack.id} active={editorSection === 'media'} onUploaded={(asset) => {
+          <AudioSnippetUploader ref={audioPreparationRef} key={pack.id} active={editorSection === 'media'} onUploaded={(asset, replaces) => {
             setMedia((current) => [asset, ...(current ?? [])])
             setMediaError(null)
+            if (replaces) {
+              updateCategories((categories) => categories.map((category) => ({
+                ...category,
+                clues: category.clues.map((clue) => ({
+                  ...clue,
+                  mediaAssetId: clue.mediaAssetId === replaces.id ? asset.id : clue.mediaAssetId,
+                  revealMediaAssetId: clue.revealMediaAssetId === replaces.id ? asset.id : clue.revealMediaAssetId,
+                })),
+              })))
+              setSaveSuccess(false)
+            }
           }} />
           {mediaDirectory ? (
             <p className={styles.mediaDirectory}>
@@ -1155,6 +1168,10 @@ export function HostEditorPage() {
                 <span className={styles.mediaName}>{asset.originalName}</span>
                 <span className={styles.mediaActions}>
                   <span className={styles.mediaMeta}>{Math.round(asset.sizeBytes / 1024)} KB</span>
+                  <Button variant="secondary" disabled={deletingMediaId === asset.id} onClick={() => {
+                    audioPreparationRef.current?.adjust(asset)
+                    document.getElementById('pack-media-heading')?.scrollIntoView({ block: 'start' })
+                  }}>Adjust volume</Button>
                   <Button
                     variant="danger"
                     size="md"

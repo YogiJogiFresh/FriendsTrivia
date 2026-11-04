@@ -1,3 +1,6 @@
+import { validAudioLevels } from './audioLevels'
+import type { AudioLevelInfo, AudioLevelSettings } from './audioLevels'
+
 export const MAX_SOURCE_BYTES = 50 * 1024 * 1024
 export const MAX_SOURCE_SECONDS = 10 * 60
 export const MP3_BITRATE = 128
@@ -120,8 +123,12 @@ export async function decodeSong(file: File, signal: AbortSignal): Promise<Decod
   }
 }
 
-export function encodeSnippet(song: DecodedSong, range: TrimRange, signal: AbortSignal): Promise<Blob> {
+export interface EncodedSnippet { blob: Blob; levels: AudioLevelInfo }
+
+export function encodeSnippet(song: DecodedSong, range: TrimRange, signal: AbortSignal,
+  settings: AudioLevelSettings = { normalize: false, gainDb: 0 }): Promise<EncodedSnippet> {
   signal.throwIfAborted()
+  if (!validAudioLevels(settings)) throw new Error('Choose a volume adjustment from -12 to +12 dB in half-dB steps.')
   const channels = slicePcm(song, range)
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL('./mp3Encoder.worker.ts', import.meta.url), { type: 'module' })
@@ -129,11 +136,11 @@ export function encodeSnippet(song: DecodedSong, range: TrimRange, signal: Abort
     const abort = () => { cleanup(); reject(new DOMException('Canceled', 'AbortError')) }
     signal.addEventListener('abort', abort, { once: true })
     worker.onerror = () => { cleanup(); reject(new Error('MP3 encoding failed. Try a shorter clip.')) }
-    worker.onmessage = (event: MessageEvent<{ bytes?: ArrayBuffer; error?: string }>) => {
+    worker.onmessage = (event: MessageEvent<{ bytes?: ArrayBuffer; levels?: AudioLevelInfo; error?: string }>) => {
       cleanup()
-      if (event.data.bytes) resolve(new Blob([event.data.bytes], { type: 'audio/mpeg' }))
+      if (event.data.bytes && event.data.levels) resolve({ blob: new Blob([event.data.bytes], { type: 'audio/mpeg' }), levels: event.data.levels })
       else reject(new Error(event.data.error ?? 'MP3 encoding failed.'))
     }
-    worker.postMessage({ channels, sampleRate: song.sampleRate }, channels.map((channel) => channel.buffer))
+    worker.postMessage({ channels, sampleRate: song.sampleRate, settings }, channels.map((channel) => channel.buffer))
   })
 }

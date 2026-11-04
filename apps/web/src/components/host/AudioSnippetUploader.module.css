@@ -127,3 +127,15 @@
 .audio {
   width: 100%;
 }
+
+.levelSlider {
+  display: block;
+  width: 100%;
+  min-height: var(--touch-target-min);
+  accent-color: var(--color-amber);
+}
+
+.levelReset {
+  max-width: 100%;
+  white-space: normal;
+}
