@@ -76,6 +76,8 @@ async function settle() {
   for (let index = 0; index < 8; index++) await Promise.resolve()
 }
 beforeEach(() => {
+  vi.stubGlobal('document', Object.assign(new EventTarget(), { visibilityState: 'visible' }))
+  vi.stubGlobal('window', Object.assign(new EventTarget(), { location: { search: '' } }))
   harness.states = []; harness.refs = []; harness.effects = []
   harness.listeners.clear(); harness.identities.clear()
   harness.identities.set('ROOM', identity)
@@ -93,9 +95,39 @@ beforeEach(() => {
 afterEach(() => {
   for (const effect of harness.effects) effect.cleanup?.()
   vi.useRealTimers()
+  vi.unstubAllGlobals()
+  vi.restoreAllMocks()
 })
 
 describe('player seat recovery', () => {
+  it('probes visible tabs without reconnecting, coalesces focus signals, and cleans up on unmount', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(performance, 'now').mockImplementation(() => Date.now())
+    render(() => usePlayerRoom('ROOM')); await settle()
+    harness.emit.mockResolvedValue({ inSync: true })
+    await vi.advanceTimersByTimeAsync(15_000)
+    expect(harness.emit).toHaveBeenLastCalledWith('player:sync', {
+      roomGeneration: 'generation', stateVersion: 0, snapshotSequence: undefined,
+    })
+    expect(render(() => usePlayerRoom('ROOM')).reconnecting).toBe(false)
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden' })
+    await vi.advanceTimersByTimeAsync(15_000)
+    expect(harness.emit).toHaveBeenCalledTimes(2)
+    Object.defineProperty(document, 'visibilityState', { value: 'visible' })
+    for (let i = 0; i < 10; i++) {
+      window.dispatchEvent(new Event('focus'))
+      window.dispatchEvent(new Event('online'))
+      document.dispatchEvent(new Event('visibilitychange'))
+    }
+    await settle()
+    expect(harness.emit).toHaveBeenCalledTimes(3)
+    expect(render(() => usePlayerRoom('ROOM')).reconnecting).toBe(false)
+    for (const effect of harness.effects) effect.cleanup?.()
+    window.dispatchEvent(new Event('focus'))
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(harness.emit).toHaveBeenCalledTimes(3)
+  })
+
   it('preserves credentials on timeout and retries without returning to nickname entry', async () => {
     vi.useFakeTimers()
     harness.emit.mockRejectedValueOnce(new SocketAckError('Slow backend', 'timeout'))
@@ -193,7 +225,7 @@ describe('player seat recovery', () => {
     expect(render(() => usePlayerRoom('ROOM'))).toMatchObject({ playerId: 'alex', recovery: null, needsNickname: false })
   })
 
-  it('restores an existing answer receipt but unlocks the next answer window', async () => {
+  it('restores an answer receipt across windows but unlocks a new attempt', async () => {
     const activeClue = { id: 'clue', categoryId: 'category', type: 'price_slider' as const, boardValue: 100, prompt: 'Price?', timerSeconds: 30 }
     harness.emit.mockResolvedValue({ ...snapshot, activeClue, ownSubmission: {
       clueId: 'clue', attempt: 1, window: 1, roomGeneration: 'generation',
@@ -201,6 +233,8 @@ describe('player seat recovery', () => {
     render(() => usePlayerRoom('ROOM')); await settle()
     expect(render(() => usePlayerRoom('ROOM')).answerSubmitted).toBe(true)
     event('room:snapshot', { ...snapshot, activeClue, window: 2 })
+    expect(render(() => usePlayerRoom('ROOM')).answerSubmitted).toBe(true)
+    event('room:snapshot', { ...snapshot, activeClue, attempt: 2, window: 2, stateVersion: 1 })
     expect(render(() => usePlayerRoom('ROOM')).answerSubmitted).toBe(false)
   })
 })
