@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import type { Clue } from '../../data/types'
 import { Button } from '../common'
+import { QuestionGif } from '../common/QuestionGif'
 import { FreeTextAnswer } from './FreeTextAnswer'
 import { MultipleChoiceAnswer } from './MultipleChoiceAnswer'
 import { PriceSliderAnswer } from './PriceSliderAnswer'
@@ -66,17 +67,14 @@ export function AnswerPanel({ clue, disabled = false, submitted = false, onSubmi
     } finally { pending.current = false }
   }
 
-  if (submitted || phase === 'submitted') {
-    return (
-      <p className={styles.submittedState} role="status">Submitted</p>
-    )
-  }
-
+  const isSubmitted = submitted || phase === 'submitted'
   const controlsDisabled = disabled || phase === 'submitting'
   return (
     <div className={styles.panel}>
-      <p className={styles.prompt}>{clue.prompt}</p>
+      {!isSubmitted || clue.questionGif ? <p className={styles.prompt}>{clue.prompt}</p> : null}
+      {clue.questionGif ? <QuestionGif key={`${clue.id}-${clue.questionGif.url}`} gif={clue.questionGif} /> : null}
 
+      {isSubmitted ? <p className={styles.submittedState} role="status">Submitted</p> : <>
       {clue.type === 'music-multiple-choice' ? (
         <MultipleChoiceAnswer
           options={clue.options}
@@ -108,6 +106,7 @@ export function AnswerPanel({ clue, disabled = false, submitted = false, onSubmi
           {phase === 'submitting' ? 'Submitting...' : 'Submit answer'}
         </Button>
       </div>
+      </>}
     </div>
   )
 }

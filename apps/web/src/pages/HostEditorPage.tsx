@@ -845,6 +845,18 @@ export function HostEditorPage() {
                             onChange={(event) => updateClue(selectedCategory.key, clue.key, { prompt: event.target.value })}
                             placeholder="e.g. This 1985 anthem topped the charts for six weeks."
                           />
+                          <GifPicker
+                            stage="question"
+                            value={clue.config.questionGif}
+                            providers={gifProviders}
+                            onProvidersChange={setGifProviders}
+                            onChange={(questionGif) => {
+                              const { questionGif: _currentGif, ...configWithoutGif } = clue.config
+                              updateClue(selectedCategory.key, clue.key, {
+                                config: questionGif ? { ...configWithoutGif, questionGif } : configWithoutGif,
+                              })
+                            }}
+                          />
 
                           {clue.type !== 'price_slider' ? (
                             <div className={styles.field}>

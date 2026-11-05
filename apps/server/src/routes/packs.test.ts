@@ -10,6 +10,36 @@ afterEach(async () => {
     await cleanup()
 })
 describe('pack deletion', () => {
+  it('persists independent question GIFs and rejects invalid direct links without replacing content', async () => {
+    const database = openDatabase(':memory:')
+    const packs = new PackRepository(database)
+    const pack = await packs.create({ title: 'Question GIFs' })
+    const app = Fastify()
+    await registerPackRoutes(app, packs)
+    cleanups.push(async () => { await app.close(); database.close() })
+    const url = 'https://example.com/question.gif?size=large'
+    const gif = { provider: 'url', url, previewUrl: url, sourceUrl: url, alt: 'Question' }
+    const input = { title: 'Question GIFs', categories: [{ title: 'Prices', clues: [
+      { type: 'price_slider', boardValue: 100, prompt: 'Price?', config: {
+        correctPrice: 0, min: 0, max: 100, questionGif: gif, revealGif: gif,
+      } },
+    ] }] }
+    expect((await app.inject({ method: 'PUT', url: `/api/packs/${pack.id}`, payload: input })).statusCode).toBe(200)
+    for (const invalid of [null, {}, { provider: 'giphy', url: 'https://media.giphy.com/a.gif',
+      previewUrl: 'https://media.giphy.com/a.gif', sourceUrl: 'https://giphy.com/a', alt: 'Question' },
+    { ...gif, alt: 'a'.repeat(301) },
+    ...['http://example.com/a.gif', 'https://example.com/a.png',
+      'https://example.com/' + 'a'.repeat(2000) + '.gif'].map(url => ({ ...gif, url, previewUrl: url, sourceUrl: url }))]) {
+      const bad = structuredClone(input)
+      Object.assign(bad.categories[0]!.clues[0]!.config, { questionGif: invalid })
+      expect((await app.inject({ method: 'PUT', url: `/api/packs/${pack.id}`, payload: bad })).statusCode).toBe(400)
+    }
+    expect((await packs.get(pack.id))?.categories[0]?.clues[0]?.config).toEqual(input.categories[0]!.clues[0]!.config)
+    const { questionGif: _removed, ...config } = input.categories[0]!.clues[0]!.config
+    const removed = { ...input, categories: [{ title: 'Prices', clues: [{ ...input.categories[0]!.clues[0], config }] }] }
+    expect((await app.inject({ method: 'PUT', url: `/api/packs/${pack.id}`, payload: removed })).statusCode).toBe(200)
+    expect((await packs.get(pack.id))?.categories[0]?.clues[0]?.config).toEqual(config)
+  })
   it('persists independent playback settings and rejects invalid settings before replacing a pack', async () => {
     const database = openDatabase(':memory:')
     const packs = new PackRepository(database)

@@ -571,6 +571,16 @@ const activeClueCommonShape = {
     })
     .strict()
     .optional(),
+  questionGif: z
+    .object({
+      provider: z.literal('url'),
+      url: z.string().url(),
+      previewUrl: z.string().url(),
+      alt: z.string().max(300),
+      sourceUrl: z.string().url(),
+    })
+    .strict()
+    .optional(),
 } as const
 
 export const ActivePublicClueSchema = z.discriminatedUnion('type', [

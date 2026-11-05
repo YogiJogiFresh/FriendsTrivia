@@ -52,6 +52,7 @@ export interface RawActiveClue {
   mediaPlayback?: AudioPlaybackSettings
   revealMediaPlayback?: AudioPlaybackSettings
   revealGif?: RevealGif
+  questionGif?: RevealGif
   choices?: string[]
   price?: RawPriceConfig
   answer?: unknown
@@ -224,6 +225,7 @@ export function cluesFromSnapshot(snapshot: Pick<RawSnapshot, 'board' | 'usedClu
         mediaPlayback: active?.mediaPlayback,
         revealMediaPlayback: active?.revealMediaPlayback,
         revealGif: active?.revealGif,
+        questionGif: active?.questionGif,
         revealedAnswer: formatRevealedAnswer(active),
       }
       if (uiType === 'music-multiple-choice') {

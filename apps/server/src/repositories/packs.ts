@@ -88,6 +88,10 @@ export function validatePack(input: {
       if (config.revealGif !== undefined && !isRevealGif(config.revealGif)) {
         throw new Error('The answer reveal GIF is invalid')
       }
+      if (config.questionGif !== undefined &&
+        (!isRevealGif(config.questionGif) || config.questionGif.provider !== 'url')) {
+        throw new Error('The question GIF must be a secure direct GIF link')
+      }
       if (clue.type.startsWith('music_')) {
         if (input.status === 'ready' && !clue.mediaAssetId) {
           throw new Error('Every music clue in a ready pack needs an uploaded song')

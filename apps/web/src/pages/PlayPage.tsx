@@ -17,6 +17,7 @@ import {
   TextField,
 } from '../components'
 import type { AnswerSubmission } from '../components'
+import { QuestionGif } from '../components/common/QuestionGif'
 import styles from './PlayPage.module.css'
 
 /**
@@ -368,6 +369,10 @@ export function PlayPage() {
             ) : (
               <div className={styles.centeredState}>
                 <h1>{forcedPlayer?.nickname ?? 'The selected player'} is answering</h1>
+                {currentClue.questionGif ? <>
+                  <p>{currentClue.prompt}</p>
+                  <QuestionGif key={`${currentClue.id}-${currentClue.questionGif.url}`} gif={currentClue.questionGif} />
+                </> : null}
                 <p>If they miss, everyone else receives ${currentClue.value}.</p>
               </div>
             )}
@@ -377,6 +382,10 @@ export function PlayPage() {
         {game.room.phase === 'ANSWERS_CLOSED' ? (
           <div className={styles.centeredState}>
             <h1>Answers locked</h1>
+            {currentClue?.questionGif ? <>
+              <p>{currentClue.prompt}</p>
+              <QuestionGif key={`${currentClue.id}-${currentClue.questionGif.url}`} gif={currentClue.questionGif} />
+            </> : null}
             {currentClue?.special ? (
               <div className={styles.specialBanner}>
                 <Badge tone="warning">{SPECIAL_DETAILS[currentClue.special].name}</Badge>

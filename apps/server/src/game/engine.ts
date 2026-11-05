@@ -174,6 +174,11 @@ export class GameEngine extends EventEmitter {
               : undefined,
             mediaPlayback: !votingHidden ? clueConfig?.mediaPlayback : undefined,
             revealMediaPlayback: !votingHidden ? clueConfig?.revealMediaPlayback : undefined,
+            questionGif: !votingHidden &&
+              ['CLUE_READY', 'ACCEPTING_ANSWERS', 'FINAL_QUESTION', 'ANSWERS_CLOSED'].includes(
+                room.state.phase === 'PAUSED' ? room.state.previousPhase ?? '' : room.state.phase) &&
+              isRevealGif(clueConfig?.questionGif) && clueConfig.questionGif.provider === 'url'
+              ? clueConfig.questionGif : undefined,
             revealGif: revealed && isRevealGif(clueConfig?.revealGif)
               ? clueConfig.revealGif
               : undefined,

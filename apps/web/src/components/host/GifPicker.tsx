@@ -15,6 +15,7 @@ import { Button } from '../common'
 import styles from './GifPicker.module.css'
 
 interface GifPickerProps {
+  stage?: 'question' | 'reveal'
   value?: ServerRevealGif
   providers: GifProviderStatus
   onProvidersChange: (providers: GifProviderStatus) => void
@@ -34,12 +35,13 @@ const providerSetupUrls: Record<GifProvider, string> = {
 }
 
 export function GifPicker({
+  stage = 'reveal',
   value,
   providers,
   onProvidersChange,
   onChange,
 }: GifPickerProps) {
-  const [provider, setProvider] = useState<GifSource>('giphy')
+  const [provider, setProvider] = useState<GifSource>(stage === 'question' ? 'url' : 'giphy')
   const [apiKey, setApiKey] = useState('')
   const [directUrl, setDirectUrl] = useState('')
   const [query, setQuery] = useState('')
@@ -83,7 +85,7 @@ export function GifPicker({
     setError(null)
     try {
       const parsed = new URL(directUrl.trim())
-      if (parsed.protocol !== 'https:' || !parsed.pathname.toLowerCase().endsWith('.gif')) {
+      if (parsed.href.length > 2_000 || parsed.protocol !== 'https:' || !parsed.pathname.toLowerCase().endsWith('.gif')) {
         throw new Error()
       }
       onChange({
@@ -91,7 +93,7 @@ export function GifPicker({
         url: parsed.href,
         previewUrl: parsed.href,
         sourceUrl: parsed.href,
-        alt: 'Answer reveal GIF',
+        alt: stage === 'question' ? 'Question GIF' : 'Answer reveal GIF',
       })
     } catch {
       setError('Enter a secure URL ending in .gif.')
@@ -102,7 +104,7 @@ export function GifPicker({
 
   return (
     <div className={styles.picker}>
-      <span className={styles.label}>Answer reveal GIF (optional)</span>
+      <span className={styles.label}>{stage === 'question' ? 'Question GIF (optional)' : 'Answer reveal GIF (optional)'}</span>
 
       {value ? (
         <div className={styles.selected}>
@@ -112,14 +114,14 @@ export function GifPicker({
               {value.provider === 'url' ? 'View linked GIF' : `View on ${providerLabels[value.provider]}`}
             </a>
             <Button variant="danger" onClick={() => onChange(undefined)}>
-              Remove GIF
+              {stage === 'question' ? 'Remove question GIF' : 'Remove GIF'}
             </Button>
           </div>
         </div>
       ) : null}
 
       <div className={styles.controls}>
-        <select
+        {stage !== 'question' ? <select
           value={provider}
           onChange={(event) => {
             setProvider(event.target.value as GifSource)
@@ -132,7 +134,7 @@ export function GifPicker({
           <option value="giphy">GIPHY</option>
           <option value="tenor">Tenor</option>
           <option value="url">Direct URL</option>
-        </select>
+        </select> : null}
 
         {provider === 'url' ? (
           <>
@@ -140,7 +142,8 @@ export function GifPicker({
               type="url"
               value={directUrl}
               placeholder="https://example.com/reaction.gif"
-              aria-label="Direct GIF URL"
+              aria-label={stage === 'question' ? 'Question GIF URL' : 'Direct GIF URL'}
+              maxLength={2_000}
               onChange={(event) => setDirectUrl(event.target.value)}
             />
             <Button variant="secondary" disabled={!directUrl.trim()} onClick={handleDirectUrl}>

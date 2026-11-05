@@ -20,6 +20,7 @@ import {
   RosterList,
   TutorialSlideshow,
 } from '../components'
+import { QuestionGif } from '../components/common/QuestionGif'
 import styles from './DisplayPage.module.css'
 
 const SILENT_AUDIO =
@@ -495,6 +496,7 @@ export function DisplayPage() {
             </p>
           ) : null}
           <p className={styles.cluePrompt}>{currentClue.prompt}</p>
+          {currentClue.questionGif ? <QuestionGif key={`${currentClue.id}-${currentClue.questionGif.url}`} gif={currentClue.questionGif} /> : null}
           {game.room.finalRound ? (
             <span className={styles.clueValue}>Final Question</span>
           ) : (

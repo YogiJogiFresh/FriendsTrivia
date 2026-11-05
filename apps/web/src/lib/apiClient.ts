@@ -81,6 +81,7 @@ export interface ServerClueConfig {
   step?: number
   prefix?: string
   revealGif?: ServerRevealGif
+  questionGif?: ServerRevealGif
 }
 
 export type GifProvider = 'giphy' | 'tenor'

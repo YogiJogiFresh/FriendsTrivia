@@ -87,6 +87,8 @@ describe('portable pack bundles', () => {
               mediaAssetId: song.id,
               revealMediaAssetId: song.id,
               config: { correctAnswer: 'Answer',
+                questionGif: { provider: 'url', url: 'https://example.com/question.gif',
+                  previewUrl: 'https://example.com/question.gif', sourceUrl: 'https://example.com/question.gif', alt: 'Question' },
                 mediaPlayback: { delaySeconds: 2, playCount: 3 },
                 revealMediaPlayback: { delaySeconds: 1, playCount: 1 } },
             },
@@ -115,6 +117,7 @@ describe('portable pack bundles', () => {
     expect(importedClue?.mediaAssetId).not.toBe(song.id)
     expect(importedClue?.revealMediaAssetId).toBe(importedClue?.mediaAssetId)
     expect(importedClue?.config).toMatchObject({
+      questionGif: { provider: 'url', url: 'https://example.com/question.gif', alt: 'Question' },
       mediaPlayback: { delaySeconds: 2, playCount: 3 },
       revealMediaPlayback: { delaySeconds: 1, playCount: 1 },
     })

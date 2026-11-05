@@ -6,6 +6,7 @@ import { categoriesFromBoard, cluesFromSnapshot } from '../../lib/snapshot'
 import { CategoryBoard } from '../board/CategoryBoard'
 import { Button } from '../common'
 import { AudioPreview } from './AudioPreview'
+import { QuestionGif } from '../common/QuestionGif'
 import styles from './PackBoardPreview.module.css'
 
 interface PackBoardPreviewProps {
@@ -89,6 +90,8 @@ function PreviewWorkspace({ categories, usedClueIds, onReveal, onReset, onAddClu
             {revealed ? 'Answer revealed' : selected.finalQuestion ? 'Final Question preview' : `$${selected.clue.value}`}
           </h3>
           <p className={styles.prompt}>{selected.clue.prompt.trim() || 'No question prompt yet.'}</p>
+          {!revealed && selected.clue.questionGif ?
+            <QuestionGif key={`${selected.clue.id}-${selected.clue.questionGif.url}`} gif={selected.clue.questionGif} /> : null}
           {revealed ? (
             <p className={styles.answer}>{selected.clue.revealedAnswer || 'No correct answer selected or entered yet.'}</p>
           ) : null}

@@ -51,6 +51,7 @@ export function clueFromDraft(categories: PreviewDraftCategory[], clueKey: strin
     mediaPlayback: config.mediaPlayback,
     revealMediaPlayback: config.revealMediaPlayback,
     revealGif: revealed ? config.revealGif : undefined,
+    questionGif: !revealed ? config.questionGif : undefined,
     choices: config.choices,
     price: {
       min: config.min ?? 0,

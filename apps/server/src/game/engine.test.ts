@@ -40,6 +40,8 @@ async function createGame(specials: SpecialType[] = []) {
               mediaPlayback: { delaySeconds: 2, playCount: 3 },
               revealMediaPlayback: { delaySeconds: 1, playCount: 1 },
               correctAnswer: 'Dancing Queen',
+              questionGif: { provider: 'url', url: 'https://example.com/question.gif',
+                previewUrl: 'https://example.com/question.gif', sourceUrl: 'https://example.com/question.gif', alt: 'Question picture' },
               acceptedAnswers: ['Dancing Queen'],
               revealGif: {
                 provider: 'giphy',
@@ -277,12 +279,14 @@ describe('game engine', () => {
     room = (await game.engine.selectClue(room, game.clueIds[0] ?? ''))
     expect(room.state.phase).toBe('SPECIAL_VOTE')
     expect((await game.engine.publicSnapshot(room)).activeClue?.prompt).toBe('Vote for the player who must answer this clue.')
+    expect((await game.engine.publicSnapshot(room)).activeClue?.questionGif).toBeUndefined()
     await expect(game.engine.submitSpecialVote(room, game.playerOne.id, game.playerOne.id)).rejects.toThrow('cannot vote for yourself')
     room = (await game.engine.submitSpecialVote(room, game.playerOne.id, game.playerTwo.id))
     await expect(game.engine.submitSpecialVote(room, game.playerOne.id, game.playerTwo.id)).rejects.toThrow('already locked')
     room = (await game.engine.resolveSpecialVote(room))
     expect(room.state.phase).toBe('ACCEPTING_ANSWERS')
     expect(room.state.forcedPlayerId).toBe(game.playerTwo.id)
+    expect((await game.engine.publicSnapshot(room)).activeClue?.questionGif?.alt).toBe('Question picture')
     expect((await game.engine.publicSnapshot(room)).answerProgress).toEqual({ answered: 0, total: 1 })
     await expect(game.engine.submitAnswer(room, game.playerOne.id, 'Dancing Queen')).rejects.toThrow('Only the selected player')
     await game.engine.submitAnswer(room, game.playerTwo.id, 'Dancing Queen')
@@ -428,13 +432,19 @@ describe('game engine', () => {
       revealMediaUrl: '/api/media/test-media/stream',
     })
   })
-  it('keeps a reveal GIF hidden until the answer is revealed', async () => {
+  it('publishes independent question and reveal GIFs only in their authorized stages', async () => {
     const game = (await createGame())
     let room = (await game.engine.startGame(game.room))
     room = (await game.engine.selectClue(room, game.clueIds[0] ?? ''))
     expect((await game.engine.publicSnapshot(room)).activeClue?.revealGif).toBeUndefined()
+    expect((await game.engine.publicSnapshot(room)).activeClue?.questionGif?.alt).toBe('Question picture')
+    room = await game.engine.pause(room)
+    expect((await game.engine.publicSnapshot(room)).activeClue?.questionGif?.alt).toBe('Question picture')
+    room = await game.engine.resume(room)
     room = (await game.engine.closeAnswers(room))
+    expect((await game.engine.publicSnapshot(room)).activeClue?.questionGif?.alt).toBe('Question picture')
     room = (await game.engine.reveal(room))
+    expect((await game.engine.publicSnapshot(room)).activeClue?.questionGif).toBeUndefined()
     expect((await game.engine.publicSnapshot(room)).activeClue?.revealGif).toMatchObject({
       provider: 'giphy',
       alt: 'Celebration',
@@ -620,6 +630,11 @@ describe('game engine', () => {
     expect(room.state.phase).toBe('FINAL_WAGER')
     expect(room.state.activeClueId).toBe(game.clueIds[0])
     expect((await game.engine.publicSnapshot(room)).board).toHaveLength(1)
+    expect((await game.engine.publicSnapshot(room)).activeClue).toBeUndefined()
+    await game.engine.submitFinalWager(room, game.playerOne.id, 0)
+    await game.engine.submitFinalWager(room, game.playerTwo.id, 0)
+    room = await game.engine.startFinalQuestion(room)
+    expect((await game.engine.publicSnapshot(room)).activeClue?.questionGif?.alt).toBe('Question picture')
   })
   it('closes an answer round whose recovered timer already expired', async () => {
     const game = (await createGame())
