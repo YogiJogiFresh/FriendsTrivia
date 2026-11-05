@@ -13,6 +13,7 @@ import {
 } from '../../lib/snapshot'
 import type { RawSnapshot, RawAnswerProgress } from '../../lib/snapshot'
 import { useConnectionStatus } from './useConnectionStatus'
+import { diagnosticsEnabled, traceEvent } from '../../lib/diagnostics'
 
 export interface RoomWatchResult {
   game: GameState | null
@@ -63,6 +64,8 @@ export function useRoomWatch(roomCode: string): RoomWatchResult {
     }
 
     function handleSnapshot(next: RawSnapshot) {
+      traceEvent('snapshot:received', { phase: next.phase, roomGeneration: next.roomGeneration,
+        stateVersion: next.stateVersion, snapshotSequence: next.snapshotSequence, clueId: next.activeClue?.id })
       if (!cancelled && next.code === roomCode) setSnapshot(current =>
         current?.roomGeneration === next.roomGeneration &&
         (current?.snapshotSequence ?? 0) > (next.snapshotSequence ?? 0) ? current :
@@ -88,6 +91,17 @@ export function useRoomWatch(roomCode: string): RoomWatchResult {
       socket.off('connect', watch)
     }
   }, [roomCode])
+
+  useEffect(() => {
+    if (!snapshot || !diagnosticsEnabled()) return
+    const frame = requestAnimationFrame(() => traceEvent('snapshot:rendered', {
+      phase: snapshot.phase, stateVersion: snapshot.stateVersion, snapshotSequence: snapshot.snapshotSequence,
+      roomGeneration: snapshot.roomGeneration, clueId: snapshot.activeClue?.id,
+      remainingSeconds: snapshot.phase === 'ANSWERS_CLOSED' ? 0 : snapshot.pausedSeconds ??
+        (snapshot.deadline ? Math.max(0, Math.ceil((Date.parse(snapshot.deadline) - Date.now()) / 1000)) : undefined),
+    }))
+    return () => cancelAnimationFrame(frame)
+  }, [snapshot])
 
   if (!snapshot) return { game: null, loading, error }
 

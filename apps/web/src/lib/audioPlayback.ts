@@ -13,11 +13,28 @@ export function validPlayback(settings: AudioPlaybackSettings): boolean {
     Number.isInteger(settings.playCount) && settings.playCount >= 0 && settings.playCount <= 100
 }
 
-export type PlaybackState = 'idle' | 'waiting' | 'playing' | 'paused' | 'finished'
+export type PlaybackState = 'idle' | 'waiting' | 'starting' | 'playing' | 'paused' | 'finished'
+export type PlaybackFailure = 'autoplay' | 'network' | 'decode' | 'unavailable' | 'unknown'
+
+export function playbackFailure(error?: unknown, mediaError?: { code: number } | null): PlaybackFailure {
+  if (typeof error === 'object' && error && 'name' in error && error.name === 'NotAllowedError') return 'autoplay'
+  if (mediaError?.code === 2) return 'network'
+  if (mediaError?.code === 3) return 'decode'
+  if (mediaError?.code === 4) return 'unavailable'
+  return 'unknown'
+}
+
+export const playbackFailureMessages: Record<PlaybackFailure, string> = {
+  autoplay: 'The browser blocked this song. Select Play audio to allow playback.',
+  network: 'The song download failed. Check your connection, then select Play audio to retry.',
+  decode: 'The browser could not decode this song. Check the audio file or try a supported format.',
+  unavailable: 'The song is unavailable or unsupported. Check its attachment and access, then retry.',
+  unknown: 'Could not play this song. Check its attachment, connection, and browser audio permissions.',
+}
 
 export function createAudioPlayback(audio: HTMLAudioElement, settings: AudioPlaybackSettings, callbacks: {
   onState?: (state: PlaybackState, plays: number) => void
-  onError?: () => void
+  onError?: (failure: PlaybackFailure) => void
 } = {}) {
   if (!validPlayback(settings)) throw new Error('Invalid song playback settings')
   let state: PlaybackState = 'idle'
@@ -39,24 +56,25 @@ export function createAudioPlayback(audio: HTMLAudioElement, settings: AudioPlay
     clearTimeout(timer)
     timer = undefined
   }
-  function failure() {
+  function failure(reason: PlaybackFailure) {
     if (disposed) return
     clear()
     audio.pause()
     update('paused')
-    callbacks.onError?.()
+    callbacks.onError?.(reason)
   }
   function play() {
     timer = undefined
     remaining = 0
     const ticket = ++generation
+    update('starting')
     void audio.play().then(() => {
       if (disposed || ticket !== generation) return
       if (nextPlay) plays += 1
       nextPlay = false
       update('playing')
-    }).catch(() => {
-      if (!disposed && ticket === generation) failure()
+    }).catch((error: unknown) => {
+      if (!disposed && ticket === generation) failure(playbackFailure(error, audio.error))
     })
   }
   function wait(milliseconds: number) {
@@ -91,7 +109,7 @@ export function createAudioPlayback(audio: HTMLAudioElement, settings: AudioPlay
     wait(settings.delaySeconds * 1000)
   }
   function pause() {
-    if (state !== 'waiting' && state !== 'playing') return
+    if (state !== 'waiting' && state !== 'starting' && state !== 'playing') return
     if (state === 'waiting') remaining = Math.max(0, due - Date.now())
     clear()
     audio.pause()
@@ -103,14 +121,17 @@ export function createAudioPlayback(audio: HTMLAudioElement, settings: AudioPlay
     else if (state === 'paused') wait(remaining)
   }
   audio.addEventListener('ended', ended)
-  audio.addEventListener('error', failure)
+  function mediaFailed() {
+    if (audio.error) failure(playbackFailure(undefined, audio.error))
+  }
+  audio.addEventListener('error', mediaFailed)
   return {
     start, pause, resume, stop,
     dispose() {
       disposed = true
       stop()
       audio.removeEventListener('ended', ended)
-      audio.removeEventListener('error', failure)
+      audio.removeEventListener('error', mediaFailed)
     },
   }
 }

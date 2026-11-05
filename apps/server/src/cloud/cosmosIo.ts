@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import type { Container, OperationInput } from '@azure/cosmos'
 import { DomainError, type Page, type PageRequest } from '../domain.js'
+import { diagnosticStage, diagnosticTime } from '../diagnostics.js'
 
 export interface Document {
   id: string
@@ -74,7 +75,7 @@ export async function retry<T>(action: () => Promise<T>): Promise<T> {
       const retryMs = typeof error === 'object' && error !== null && 'retryAfterInMs' in error && typeof error.retryAfterInMs === 'number'
         ? error.retryAfterInMs : 50 * 2 ** attempt
       if (retryMs > 1_000 || Date.now() - started + retryMs > 5_000) throw error
-      await new Promise((resolve) => setTimeout(resolve, Math.max(10, retryMs)))
+      await diagnosticTime('cosmos_retry_wait', () => new Promise((resolve) => setTimeout(resolve, Math.max(10, retryMs))))
     }
   }
 }
@@ -106,7 +107,8 @@ export class SdkCosmosAccess implements CosmosAccess {
   constructor(private readonly container: Container) {}
   async read<T extends Document>(pk: string, id: string): Promise<T | undefined> {
     try {
-      const response = await retry(() => this.container.item(id, pk).read<T>())
+      const response = await retry(() => diagnosticTime('cosmos_read', () => this.container.item(id, pk).read<T>()))
+      diagnosticStage('cosmos_ru', 0, response.requestCharge)
       return response.resource ? validateDocument(response.resource) : undefined
     } catch (error) { if (status(error) === 404) return undefined; throw error }
   }
@@ -124,10 +126,15 @@ export class SdkCosmosAccess implements CosmosAccess {
       query: `SELECT * FROM c${where ? ` WHERE ${where}` : ''}${order ? ` ORDER BY ${order}` : ''}`, parameters,
     }, { enableQueryControl: true, maxItemCount: pageLimit(request), ...(query.pk ? { partitionKey: query.pk } : {}),
       ...(request?.cursor ? { continuationToken: request.cursor } : {}) })
-    let response = await retry(() => iterator.fetchNext()), emptyPages = 0
+    const fetchNext = async () => {
+      const page = await diagnosticTime('cosmos_query', () => iterator.fetchNext())
+      diagnosticStage('cosmos_ru', 0, page.requestCharge)
+      return page
+    }
+    let response = await retry(fetchNext), emptyPages = 0
     while (response.resources?.length === 0 && response.hasMoreResults) {
       if (++emptyPages >= 100) throw new CosmosFailure(503, 'Cosmos query returned too many empty pages')
-      response = await retry(() => iterator.fetchNext())
+      response = await retry(fetchNext)
     }
     // Empty cross-partition ordered feeds can terminate without a resources array.
     if (response.resources === undefined) {
@@ -149,7 +156,7 @@ export class SdkCosmosAccess implements CosmosAccess {
       return write.type === 'create' ? { operationType: 'Create', resourceBody: body }
         : { operationType: 'Replace', id: body.id, resourceBody: body, ifMatch: write.etag }
     })
-    const response = await retry(() => this.container.items.batch(operations, pk))
+    const response = await retry(() => diagnosticTime('cosmos_batch', () => this.container.items.batch(operations, pk)))
     const failed = response.result?.find((result) => result.statusCode >= 400 && result.statusCode !== 424) ??
       response.result?.find((result) => result.statusCode >= 400)
     if (failed) throw new CosmosFailure(failed.statusCode)

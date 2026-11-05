@@ -11,6 +11,7 @@ import { DomainError, type UploadReservation } from '../domain.js'
 import type { MediaAsset, MediaRepository } from '../repositories/media.js'
 import { FilesystemMediaStorage, type MediaStorage } from '../storage/media.js'
 import { cleanupUpload, deleteMediaObject, writeReservedMedia } from '../storage/operations.js'
+import { diagnose, diagnosticMedia, diagnosticTime, diagnosticTransfer } from '../diagnostics.js'
 
 interface MediaParams {
   id: string
@@ -75,12 +76,15 @@ export async function registerMediaRoutes(
     }
   })
 
-  app.get<{ Params: MediaParams }>('/api/media/:id/stream', async (request, reply) => {
-    const asset = await media.get(request.params.id)
+  app.get<{ Params: MediaParams }>('/api/media/:id/stream', async (request, reply) => diagnose('media',
+    (trace) => request.log.info({ diagnostic: trace }, 'Media diagnostic'), async () => {
+    diagnosticTransfer(reply.raw, (trace) => request.log.info({ diagnostic: trace }, 'Media diagnostic'))
+    const asset = await diagnosticTime('media_metadata', () => media.get(request.params.id))
     if (!asset) return reply.code(404).send({ error: 'Media asset not found' })
+    diagnosticMedia(asset.id)
     if (authorizeStream) {
       try {
-        if (!await authorizeStream(request, asset)) return reply.code(403).send({ error: 'Media access denied' })
+        if (!await diagnosticTime('media_authorization', () => authorizeStream(request, asset))) return reply.code(403).send({ error: 'Media access denied' })
       } catch (error) {
         request.log.error({ err: error }, 'Media authorization failed')
         return reply.code(500).send({ error: 'Could not check media access' })
@@ -89,7 +93,7 @@ export async function registerMediaRoutes(
 
     let stats: { sizeBytes: number } | undefined
     try {
-      stats = await storage.stat(asset.relativePath)
+      stats = await diagnosticTime('media_stat', () => storage.stat(asset.relativePath))
     } catch (error) {
       if (/Invalid media path|outside the configured content directory/.test((error as Error).message)) {
         return reply.code(400).send({ error: 'Invalid media path' })
@@ -103,7 +107,7 @@ export async function registerMediaRoutes(
     const range = request.headers.range
     const sendAudio = async (bounds?: { start: number; end: number }) => {
       try {
-        return reply.send(await storage.read(asset.relativePath, bounds))
+        return reply.send(await diagnosticTime('media_download_headers', () => storage.read(asset.relativePath, bounds)))
       } catch (error) {
         request.log.error({ err: error }, 'Media storage read failed')
         reply.removeHeader('Content-Length')
@@ -136,7 +140,7 @@ export async function registerMediaRoutes(
       .header('Content-Range', `bytes ${start}-${end}/${size}`)
       .header('Content-Length', end - start + 1)
     return sendAudio({ start, end })
-  })
+  }))
 
   app.delete<{ Params: MediaParams }>('/api/media/:id', async (request, reply) => {
     let ticket

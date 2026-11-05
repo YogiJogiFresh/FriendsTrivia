@@ -80,6 +80,62 @@ async function disconnected(game: Awaited<ReturnType<typeof fixture>>, playerId:
 }
 
 describe('socket persistence acknowledgements', () => {
+  it('builds no command snapshot and releases only a minimal committed receipt before the authoritative broadcast', async () => {
+    const game = await fixture(true)
+    const guest = await game.client()
+    await emit(guest, 'player:join', { code: game.room.code, nickname: 'Alex' })
+    const host = await game.client()
+    await emit(host, 'host:connect', { code: game.room.code, hostToken: game.hostToken })
+    await new Promise(resolve => setTimeout(resolve, 150))
+    const snapshots: PlayerSnapshot[] = []
+    host.on('host:snapshot', snapshot => snapshots.push(snapshot))
+    const builds = vi.spyOn(game.engine, 'snapshotPair')
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const commit = game.rooms.store.commit.bind(game.rooms.store)
+    const commits = vi.spyOn(game.rooms.store, 'commit').mockImplementationOnce(async command => {
+      await gate
+      return commit(command)
+    })
+    let acknowledged = false
+    const pending = emit<ReturnType<GameEngine['commandReceipt']>>(host, 'host:command', {
+      command: 'start', expectedRoomGeneration: game.room.ref.generation, expectedAttempt: 0, expectedWindow: 0,
+    })
+      .then(result => { acknowledged = true; return result })
+    try {
+      await vi.waitFor(() => expect(commits).toHaveBeenCalledTimes(1))
+      await new Promise(resolve => setTimeout(resolve, 80))
+      expect(acknowledged).toBe(false)
+      expect(builds).not.toHaveBeenCalled()
+      expect(snapshots).toHaveLength(0)
+    } finally { release() }
+    const result = await pending
+    expect(result.ok).toBe(true)
+    expect(Object.keys(result.data!).sort()).toEqual(['phase', 'roomGeneration', 'snapshotSequence', 'stateVersion'])
+    expect(result.data!.stateVersion).toBe((await game.rooms.getById(game.room.id))!.stateVersion)
+    await vi.waitFor(() => expect(snapshots).toHaveLength(1))
+    expect(builds).toHaveBeenCalledTimes(1)
+    expect(snapshots[0]!.snapshotSequence).toBeGreaterThan(result.data!.snapshotSequence)
+  })
+
+  it('does not acknowledge or publish a rejected host mutation as successful', async () => {
+    const game = await fixture()
+    const guest = await game.client()
+    await emit(guest, 'player:join', { code: game.room.code, nickname: 'Alex' })
+    const host = await game.client()
+    await emit(host, 'host:connect', { code: game.room.code, hostToken: game.hostToken })
+    await new Promise(resolve => setTimeout(resolve, 150))
+    const receipt = vi.spyOn(game.engine, 'commandReceipt')
+    const snapshots = vi.fn()
+    host.on('host:snapshot', snapshots)
+    vi.spyOn(game.rooms.store, 'commit').mockRejectedValueOnce(new Error('Storage unavailable'))
+    expect((await emit(host, 'host:command', { command: 'start' })).ok).toBe(false)
+    await new Promise(resolve => setTimeout(resolve, 100))
+    expect(receipt).not.toHaveBeenCalled()
+    expect(snapshots).not.toHaveBeenCalled()
+    expect((await game.rooms.getById(game.room.id))!.state.phase).toBe('LOBBY')
+  })
+
   it('publishes small coalesced progress for 50 players without a host or per-viewer board reads', async () => {
     const game = await fixture(true)
     const players = await Promise.all(Array.from({ length: 50 }, () => game.client()))

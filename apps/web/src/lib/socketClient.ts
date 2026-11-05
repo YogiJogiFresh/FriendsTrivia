@@ -1,5 +1,7 @@
 import { io, type Socket } from 'socket.io-client'
 import type { ConnectionState } from '../data/types'
+import { traceEvent } from './diagnostics'
+import { commandLabels } from './hostCommands'
 
 /**
  * Single shared Socket.IO connection for the whole app. Connecting to no URL
@@ -43,11 +45,16 @@ export function newRequestId(): string {
 export function emitWithAck<T = unknown>(event: string, payload: Record<string, unknown>): Promise<T> {
   const requestId = payload.requestId ?? newRequestId()
   const request = { ...payload, requestId }
+  const started = performance.now()
+  const identity = { requestId: typeof requestId === 'string' ? requestId : undefined,
+    command: typeof payload.command === 'string' && Object.hasOwn(commandLabels, payload.command) ? payload.command : undefined }
+  traceEvent('socket:send', identity)
   return new Promise((resolve, reject) => {
     getSocket()
       .timeout(10_000)
       .emit(event, request, (error: Error | null, result?: AckResult<T>) => {
       if (error) {
+        traceEvent('socket:timeout', { ...identity, ms: performance.now() - started })
         reject(new SocketAckError('The game server did not respond. Check your connection and try again.', 'timeout'))
         return
       }
@@ -55,6 +62,7 @@ export function emitWithAck<T = unknown>(event: string, payload: Record<string, 
         reject(new SocketAckError('The game server returned an invalid response.'))
         return
       }
+      traceEvent(result.ok ? 'socket:ack' : 'socket:rejected', { ...identity, ms: performance.now() - started })
       if (result.ok) resolve(result.data)
       else reject(new SocketAckError(result.error, result.code))
       })

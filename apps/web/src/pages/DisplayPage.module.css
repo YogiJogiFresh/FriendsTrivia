@@ -66,7 +66,7 @@
   margin-inline: auto;
 }
 
-.boardShell {
+.fittedShell {
   height: 100svh;
   height: 100dvh;
   min-height: 0;
@@ -74,17 +74,85 @@
   padding-right: var(--safe-right);
 }
 
-.boardShell .topBar {
+.fittedShell .topBar {
   padding: var(--space-2) var(--space-3);
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.fittedShell .topBarRight {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-left: auto;
+  max-width: 100%;
+}
+
+.fittedShell .topBar button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: var(--space-2);
+  font-size: var(--font-size-sm);
 }
 
 .zoomControls {
   flex-shrink: 0;
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  justify-content: center;
   gap: var(--space-2);
+}
+
+.zoomControls output {
+  min-width: 4ch;
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.clueMain {
+  flex: 1 1 0;
+  display: flex;
+  min-height: 0;
+  padding: var(--space-2);
+}
+
+.fitFrame {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.fitStage {
+  position: relative;
+  overflow: hidden;
+}
+
+.fitContent {
+  position: absolute;
+  max-width: var(--display-max-width);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3);
+  text-align: center;
+  overflow-wrap: anywhere;
+  transform-origin: top left;
+}
+
+.fitContent > * {
+  flex-shrink: 0;
+  max-width: 100%;
+}
+
+.fitContent p {
+  margin: 0;
+}
+
+.fitContent .revealGif img {
+  max-width: 100%;
 }
 
 .answersComplete {
@@ -271,4 +339,16 @@
   .lobbyLayout {
     grid-template-columns: 1fr;
   }
+}
+.audioStatus {
+  flex-shrink: 0;
+  padding: var(--space-1) var(--space-3);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  text-align: center;
+}
+
+.audioStatus p {
+  margin: var(--space-1) 0;
+  color: var(--color-danger);
 }

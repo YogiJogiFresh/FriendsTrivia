@@ -7,6 +7,7 @@ import { createId } from '../ids.js'
 import { isRevealGif } from '../gifs.js'
 import type { RoomRepository } from '../repositories/rooms.js'
 import type { GamePhase, RoomRecord, RoomState, SpecialType } from './types.js'
+import { diagnosticTime } from '../diagnostics.js'
 type ClueRow = GameClue
 type SubmissionRow = Submission
 const allowedTransitions: Record<GamePhase, readonly GamePhase[]> = {
@@ -96,6 +97,12 @@ export class GameEngine extends EventEmitter {
   async hostSnapshot(room: RoomRecord) {
     return (await this.snapshotPair(room)).host!
   }
+  commandReceipt(room: RoomRecord) {
+    return {
+      phase: room.state.phase, stateVersion: room.stateVersion, roomGeneration: room.ref.generation,
+      snapshotSequence: ++this.snapshotSequence,
+    }
+  }
   private async answerState(room: RoomRecord, includeHost: boolean) {
     const accepting = room.state.phase === 'ACCEPTING_ANSWERS' || room.state.phase === 'FINAL_QUESTION'
     const players = await this.rooms.scores(room.id)
@@ -119,7 +126,7 @@ export class GameEngine extends EventEmitter {
     }))
   }
   async snapshotPair(room: RoomRecord, includeHost = true) {
-    return this.readRoom(room.id, async (room) => {
+    return diagnosticTime('snapshot', () => this.readRoom(room.id, async (room) => {
 
       const board = (await this.rooms.store.board(room.ref))
       const clue = room.state.activeClueId ? (await this.getClue(room.state.activeClueId)) : undefined
@@ -201,7 +208,7 @@ export class GameEngine extends EventEmitter {
         submissions: submissions.map(({ playerId, elapsedMs, receivedAt }) => ({ playerId, elapsedMs, receivedAt })),
       } : undefined
       return { public: publicSnapshot, host }
-    })
+    }))
   }
   async startGame(room: RoomRecord): Promise<RoomRecord> {
     return this.mutate(room, async (room) => {

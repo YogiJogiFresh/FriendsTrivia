@@ -68,9 +68,9 @@ function AudioPreviewPlayer({ src, label, settings: input, reveal = false, activ
         onTimeUpdate={() => setPosition(audioRef.current?.currentTime ?? 0)}
         onDurationChange={() => setDuration(audioRef.current?.duration ?? 0)} />
       <div className={styles.controls}>
-        <Button variant="secondary" disabled={!active || !valid || state === 'playing' || state === 'waiting'}
+        <Button variant="secondary" disabled={!active || !valid || state === 'playing' || state === 'waiting' || state === 'starting'}
           onClick={play}>{state === 'paused' ? `Resume ${label.toLowerCase()}` : `Play ${label.toLowerCase()}`}</Button>
-        <Button variant="secondary" disabled={state !== 'playing' && state !== 'waiting'}
+        <Button variant="secondary" disabled={state !== 'playing' && state !== 'waiting' && state !== 'starting'}
           onClick={() => playbackRef.current?.pause()}>Pause</Button>
         <Button variant="ghost" onClick={() => playbackRef.current?.stop()}>Stop</Button>
       </div>
@@ -82,7 +82,8 @@ function AudioPreviewPlayer({ src, label, settings: input, reveal = false, activ
           }} />
       ) : null}
       <span role="status" className={styles.status}>
-        {state === 'waiting' ? `Waiting ${settings.delaySeconds} seconds before playback.`
+        {state === 'starting' ? 'Preparing audio...'
+          : state === 'waiting' ? `Waiting ${settings.delaySeconds} seconds before playback.`
           : state === 'playing' ? `Playing ${plays}${settings.playCount ? ` of ${settings.playCount}` : ' (looping)'}.`
             : state === 'finished' ? 'Playback finished.' : state === 'paused' ? 'Playback paused.' : 'Manual preview; uses delay and play count settings.'}
       </span>

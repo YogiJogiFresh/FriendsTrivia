@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { commandLabels } from '../lib/hostCommands'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useHostRoom } from '../data/hooks'
 import { useCountdown } from '../data/hooks/useCountdown'
@@ -32,7 +33,7 @@ import styles from './HostRoomPage.module.css'
 export function HostRoomPage() {
   const { roomCode = '----' } = useParams<{ roomCode: string }>()
   const navigate = useNavigate()
-  const { game, loading, error, sendCommand, recoveryRequests, decideRecovery } = useHostRoom(roomCode)
+  const { game, loading, error, sendCommand, pendingCommand, recoveryRequests, decideRecovery } = useHostRoom(roomCode)
   const [pendingRecovery, setPendingRecovery] = useState<string[]>([])
   const [notice, setNotice] = useState<string | null>(null)
   const [scoreFormOpen, setScoreFormOpen] = useState(false)
@@ -50,10 +51,14 @@ export function HostRoomPage() {
     window.setTimeout(() => setNotice((current) => (current === message ? null : current)), 4000)
   }
 
-  function run(command: string, payload?: Record<string, unknown>) {
-    sendCommand(command, payload).catch((err: unknown) => {
+  async function run(command: string, payload?: Record<string, unknown>) {
+    try {
+      await sendCommand(command, payload)
+      return true
+    } catch (err: unknown) {
       showNotice(err instanceof ApiError || err instanceof Error ? err.message : 'That action failed.')
-    })
+      return false
+    }
   }
   async function handleRecovery(id: string, approved: boolean) {
     setPendingRecovery((current) => [...current, id])
@@ -93,15 +98,16 @@ export function HostRoomPage() {
     Boolean(room.answerProgress && room.answerProgress.total > 0 &&
       room.answerProgress.answered === room.answerProgress.total)
 
-  function handleAdjustScoreSubmit() {
+  async function handleAdjustScoreSubmit() {
     const delta = Number(scoreDelta)
     if (!scorePlayerId || !Number.isFinite(delta) || delta === 0 || !scoreReason.trim()) {
       showNotice('Pick a player, a non-zero point change, and a reason.')
       return
     }
-    run('adjustScore', { playerId: scorePlayerId, delta, reason: scoreReason.trim() })
-    setScoreReason('')
-    setScoreFormOpen(false)
+    if (await run('adjustScore', { playerId: scorePlayerId, delta, reason: scoreReason.trim() })) {
+      setScoreReason('')
+      setScoreFormOpen(false)
+    }
   }
 
   function handleAdvance() {
@@ -127,6 +133,8 @@ export function HostRoomPage() {
 
   return (
     <div>
+      {pendingCommand ? <p role="status">{commandLabels[pendingCommand] ?? 'Updating game'}...</p> : null}
+      <fieldset className={styles.controls} disabled={Boolean(pendingCommand) || game.connection !== 'connected'} aria-label="Live host controls">
       <div className={styles.headerRow}>
         <div className={styles.titleGroup}>
           <h1>Room {roomCode}</h1>
@@ -389,6 +397,7 @@ export function HostRoomPage() {
           </Card>
         </div>
       </div>
+      </fieldset>
       <CastDisplayDialog
         displayUrl={displayUrl}
         open={castDialogOpen}

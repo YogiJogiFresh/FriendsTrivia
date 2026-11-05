@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createAudioPlayback } from './audioPlayback'
+import { createAudioPlayback, playbackFailure } from './audioPlayback'
 
 afterEach(() => vi.useRealTimers())
 
@@ -104,5 +104,26 @@ describe('song delay and play count', () => {
     await vi.advanceTimersByTimeAsync(0)
     expect(onError).toHaveBeenCalledTimes(1)
     playback.dispose()
+  })
+  it('distinguishes scheduled delay from a pending play and ignores stale successful starts', async () => {
+    const { audio, playback, onState } = player(1, 1)
+    let finish!: () => void
+    audio.play.mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve }))
+    playback.start()
+    expect(onState).toHaveBeenLastCalledWith('waiting', 0)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(onState).toHaveBeenLastCalledWith('starting', 0)
+    playback.pause()
+    finish()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(onState).toHaveBeenLastCalledWith('paused', 0)
+    playback.dispose()
+  })
+  it('classifies browser evidence without assuming every failure is autoplay', () => {
+    expect(playbackFailure({ name: 'NotAllowedError' })).toBe('autoplay')
+    expect(playbackFailure(undefined, { code: 2 })).toBe('network')
+    expect(playbackFailure(undefined, { code: 3 })).toBe('decode')
+    expect(playbackFailure(undefined, { code: 4 })).toBe('unavailable')
+    expect(playbackFailure(new Error('private-detail'))).toBe('unknown')
   })
 })

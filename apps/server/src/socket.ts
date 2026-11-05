@@ -7,6 +7,7 @@ import type { GameEngine } from './game/engine.js'
 import type { RoomRecord } from './game/types.js'
 import type { RoomRepository } from './repositories/rooms.js'
 import { allowedRequestOrigin } from './publicAccess.js'
+import { diagnose, diagnosticStage } from './diagnostics.js'
 type Ack = (result: {
   ok: true
   data?: unknown
@@ -27,7 +28,7 @@ export function registerSocketServer(app: FastifyInstance, rooms: RoomRepository
       callback(allowed ? null : 'Cross-origin socket connections are not allowed', allowed)
     },
   })
-  interface PendingSnapshot { timer?: NodeJS.Timeout; full: boolean; running: boolean; dirty: boolean }
+  interface PendingSnapshot { timer?: NodeJS.Timeout; full: boolean; running: boolean; dirty: boolean; queuedAt: number }
   const pendingSnapshots = new Map<string, PendingSnapshot>()
   let stopping = false
   const playerSockets = new Map<string, string>()
@@ -130,7 +131,8 @@ export function registerSocketServer(app: FastifyInstance, rooms: RoomRepository
       const full = pending.full
       pending.full = false
       pending.dirty = false
-      void engine.runRoom(roomId, async () => {
+      void diagnose('broadcast', (trace) => app.log.info({ diagnostic: trace }, 'Game diagnostic'), () => engine.runRoom(roomId, async () => {
+        diagnosticStage('coalesce_and_queue_wait', performance.now() - pending.queuedAt)
         const room = await rooms.getById(roomId)
         if (!room) return
         if (['finished', 'abandoned'].includes(room.status))
@@ -155,7 +157,8 @@ export function registerSocketServer(app: FastifyInstance, rooms: RoomRepository
           })
         }
         if (snapshots.host) emitHostSnapshot(room.id, snapshots.host)
-      }).catch((error: unknown) => {
+        diagnosticStage('emit', 0)
+      })).catch((error: unknown) => {
         app.log.error({ err: error }, 'Snapshot broadcast failed')
         if (error instanceof DomainError && error.code === 'not_found')
           for (const request of recoveryRequests.values())
@@ -177,7 +180,7 @@ export function registerSocketServer(app: FastifyInstance, rooms: RoomRepository
       if (existing.running) existing.dirty = true
       return
     }
-    const pending: PendingSnapshot = { full, running: false, dirty: false }
+    const pending: PendingSnapshot = { full, running: false, dirty: false, queuedAt: performance.now() }
     pendingSnapshots.set(roomId, pending)
     scheduleSnapshot(roomId, pending)
   }
@@ -202,15 +205,17 @@ export function registerSocketServer(app: FastifyInstance, rooms: RoomRepository
   io.on('connection', (socket) => {
     let reconnecting: { key: string; promise: Promise<Awaited<ReturnType<typeof playerSnapshot>>> } | undefined
     function handle(ack: Ack, action: () => Promise<unknown>, serialize = true, requestId?: string): void {
-      const execute = (async () => {
+      const execute = diagnose('socket', (trace) => app.log.info({ diagnostic: trace }, 'Game diagnostic'), async () => {
         if (requestId !== undefined && (typeof requestId !== 'string' || !/^[A-Za-z0-9_-]{8,100}$/.test(requestId)))
           throw new Error('Invalid request ID')
         if (serialize && rooms.mode === 'cloud' && !requestId) throw new Error('A request ID is required')
         const operationId = requestId ? `${socket.data.role}:${socket.data.playerId ?? 'host'}:${requestId}` : undefined
-        return serialize && typeof socket.data.roomId === 'string'
+        const result = await (serialize && typeof socket.data.roomId === 'string'
           ? engine.runRoom(socket.data.roomId, action, operationId)
-          : action()
-      })()
+          : action())
+        diagnosticStage('ack_ready', 0)
+        return result
+      }, requestId)
       void execute.then((data) => {
         if (typeof ack === 'function') ack({ ok: true, data })
       }, (error: unknown) => {
@@ -529,29 +534,29 @@ export function registerSocketServer(app: FastifyInstance, rooms: RoomRepository
           throw new Error('Host authorization required')
         switch (payload.command) {
           case 'start':
-            return (await engine.hostSnapshot((await engine.startGame(room))))
+            await engine.startGame(room); break
           case 'startFinal':
-            return (await engine.hostSnapshot((await engine.startFinalRound(room))))
+            await engine.startFinalRound(room); break
           case 'startFinalQuestion':
-            return (await engine.hostSnapshot((await engine.startFinalQuestion(room))))
+            await engine.startFinalQuestion(room); break
           case 'selectClue':
             if (!payload.clueId)
               throw new Error('A clue is required')
-            return (await engine.hostSnapshot((await engine.selectClue(room, payload.clueId))))
+            await engine.selectClue(room, payload.clueId); break
           case 'openAnswers':
-            return (await engine.hostSnapshot((await engine.openAnswers(room))))
+            await engine.openAnswers(room); break
           case 'resolveSpecialVote':
-            return (await engine.hostSnapshot((await engine.resolveSpecialVote(room))))
+            await engine.resolveSpecialVote(room); break
           case 'closeAnswers':
-            return (await engine.hostSnapshot((await engine.closeAnswers(room))))
+            await engine.closeAnswers(room); break
           case 'reveal':
-            return (await engine.hostSnapshot((await engine.reveal(room))))
+            await engine.reveal(room); break
           case 'leaderboard':
-            return (await engine.hostSnapshot((await engine.showLeaderboard(room))))
+            await engine.showLeaderboard(room); break
           case 'board':
-            return (await engine.hostSnapshot((await engine.returnToBoard(room))))
+            await engine.returnToBoard(room); break
           case 'goBack':
-            return (await engine.hostSnapshot((await engine.goBack(room))))
+            await engine.goBack(room); break
           case 'resetClue': {
             const reset = (await engine.resetClue(room))
             if ((await engine.publicSnapshot(reset)).activeClue?.mediaUrl) {
@@ -559,10 +564,10 @@ export function registerSocketServer(app: FastifyInstance, rooms: RoomRepository
                 clueId: reset.state.activeClueId,
               }))
             }
-            return (await engine.hostSnapshot(reset))
+            break
           }
           case 'skip':
-            return (await engine.hostSnapshot((await engine.skipClue(room))))
+            await engine.skipClue(room); break
           case 'replay':
             if (!room.state.activeClueId)
               throw new Error('No clue is selected')
@@ -572,19 +577,19 @@ export function registerSocketServer(app: FastifyInstance, rooms: RoomRepository
             engine.afterCommit(() => io.to(`room:${room.id}`).emit('media:replay', {
               clueId: room.state.activeClueId,
             }))
-            return
+            break
           case 'pause':
-            return (await engine.hostSnapshot((await engine.pause(room))))
+            await engine.pause(room); break
           case 'resume':
-            return (await engine.hostSnapshot((await engine.resume(room))))
+            await engine.resume(room); break
           case 'finish':
-            return (await engine.hostSnapshot((await engine.finish(room))))
+            await engine.finish(room); break
           case 'end':
-            return (await engine.hostSnapshot((await engine.endSession(room))))
+            await engine.endSession(room); break
           case 'lock':
             await rooms.setJoiningLocked(room.id, Boolean(payload.locked))
             engine.afterCommit(() => broadcast(room.id))
-            return
+            break
           case 'kick':
             if (!payload.playerId || !(await rooms.kickPlayer(room.id, payload.playerId))) {
               throw new Error('Player not found')
@@ -599,16 +604,21 @@ export function registerSocketServer(app: FastifyInstance, rooms: RoomRepository
               await engine.resolveSpecialVote(room)
             }
             engine.afterCommit(() => broadcast(room.id))
-            return
+            break
           case 'adjustScore':
             if (!payload.playerId || typeof payload.delta !== 'number' || !payload.reason) {
               throw new Error('Player, score delta, and reason are required')
             }
             await engine.adjustScore(room, payload.playerId, payload.delta, payload.reason)
-            return
+            break
           default:
             throw new Error('Unknown host command')
         }
+        const committedRoom = (await rooms.getById(room.id))!
+        diagnosticStage(`host_${payload.command}`, 0)
+        const receipt = {} as ReturnType<GameEngine['commandReceipt']>
+        engine.afterCommit(() => Object.assign(receipt, engine.commandReceipt(committedRoom)))
+        return receipt
       }, true, payload?.requestId)
     })
     socket.on('disconnect', () => {

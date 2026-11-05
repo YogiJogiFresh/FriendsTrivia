@@ -4,6 +4,7 @@ import { DomainError } from '../domain.js'
 import type { GameSettings, PlayerRecord, PlayerScore, RoomRecord, RoomState } from '../game/types.js'
 import { createId, createToken, hashToken, tokenMatches } from '../ids.js'
 import { domainFrom, type DomainSource } from '../sqliteStore.js'
+import { diagnosticRoom, diagnosticStage, diagnosticTime } from '../diagnostics.js'
 
 interface Command {
   loaded: LoadedRoom
@@ -52,26 +53,29 @@ export class RoomRepository {
       return action()
     }
     if (this.stopping) return Promise.reject(new Error('Server is shutting down'))
+    const queuedAt = performance.now()
     const prior = this.tails.get(roomId) ?? Promise.resolve()
     const result = prior.then(async () => {
-      const ref = await this.store.resolveId(roomId)
+      diagnosticStage('queue_wait', performance.now() - queuedAt)
+      const ref = await diagnosticTime('room_resolve', () => this.store.resolveId(roomId))
       if (!ref) throw new DomainError('not_found', 'Room not found')
-      const loaded = await this.store.load(ref)
+      const loaded = await diagnosticTime('room_load', () => this.store.load(ref))
       const command: Command = { loaded, initial: structuredClone(loaded.room), change: { kind: 'none' }, effects: [], operationId }
-      const output = await this.commands.run(command, action)
+      const output = await diagnosticTime('action', () => this.commands.run(command, action))
       const stateChanged = command.initial.stateVersion !== command.loaded.room.stateVersion ||
         command.initial.joiningLocked !== command.loaded.room.joiningLocked
       if (stateChanged || command.change.kind !== 'none') {
-        const committed = await this.store.commit({
+        const committed = await diagnosticTime('commit', () => this.store.commit({
           ref, expectedRevision: loaded.revision, operationId, at: new Date().toISOString(), change: command.change,
           ...(stateChanged ? { state: {
             value: command.loaded.room.state, status: command.loaded.room.status,
             nextStateVersion: Math.max(command.loaded.room.stateVersion, command.initial.stateVersion + 1),
             joiningLocked: command.loaded.room.joiningLocked,
           } } : {}),
-        })
+        }))
         Object.assign(command.loaded.room, committed.room)
       }
+      diagnosticRoom(command.loaded.room)
       for (const effect of command.effects) this.publish(effect)
       return output
     })

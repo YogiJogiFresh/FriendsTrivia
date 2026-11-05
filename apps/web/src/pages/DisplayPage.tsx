@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useParams } from 'react-router-dom'
 import { useRoomWatch } from '../data/hooks'
 import { useCountdown } from '../data/hooks/useCountdown'
 import { getSocket } from '../lib/socketClient'
 import { SPECIAL_DETAILS } from '../data/types'
-import { createAudioPlayback, playbackSettings } from '../lib/audioPlayback'
+import { createAudioPlayback, playbackSettings, playbackFailureMessages } from '../lib/audioPlayback'
+import type { PlaybackState } from '../lib/audioPlayback'
+import { diagnosticsEnabled, mediaIdentity, traceEvent } from '../lib/diagnostics'
 import {
   Button,
   Badge,
@@ -23,6 +25,57 @@ import styles from './DisplayPage.module.css'
 const SILENT_AUDIO =
   'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQQAAACAgICA'
 
+function FittedClue({ zoom, children }: { zoom: number; children: ReactNode }) {
+  const frameRef = useRef<HTMLDivElement>(null)
+  const stageRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
+
+  useLayoutEffect(() => {
+    const frame = frameRef.current!
+    const stage = stageRef.current!
+    const content = contentRef.current!
+    let pendingFrame = 0
+    function measure() {
+      const width = frame.clientWidth
+      const height = frame.clientHeight
+      content.style.width = `${width}px`
+      const naturalWidth = content.offsetWidth
+      const naturalHeight = content.offsetHeight
+      if (!width || !height || !naturalWidth || !naturalHeight) return
+      const scale = Math.min(1, width / naturalWidth, height / naturalHeight) * zoom
+      const scaledWidth = naturalWidth * scale
+      const scaledHeight = naturalHeight * scale
+      // Reserve scaled bounds, not the untransformed element's scroll footprint.
+      stage.style.width = `${Math.max(width, scaledWidth)}px`
+      stage.style.height = `${Math.max(height, scaledHeight)}px`
+      content.style.left = `${Math.max(0, (width - scaledWidth) / 2)}px`
+      content.style.top = `${Math.max(0, (height - scaledHeight) / 2)}px`
+      content.style.transform = `scale(${scale})`
+    }
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(pendingFrame)
+      pendingFrame = requestAnimationFrame(measure)
+    })
+    observer.observe(frame)
+    observer.observe(content)
+    measure()
+    return () => {
+      observer.disconnect()
+      cancelAnimationFrame(pendingFrame)
+    }
+  }, [zoom])
+
+  return (
+    <div className={styles.clueMain}>
+      <div className={styles.fitFrame} ref={frameRef} tabIndex={0} role="region" aria-label="Clue content">
+        <div className={styles.fitStage} ref={stageRef}>
+          <div className={styles.fitContent} ref={contentRef}>{children}</div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /**
  * Shared display shell: the big screen everyone in the room looks at. This
  * route intentionally does not use `AppShell`/`SiteHeader` — it is meant to
@@ -38,8 +91,11 @@ export function DisplayPage() {
   const currentMediaUrl = currentClue?.mediaUrl
   const currentRevealMediaUrl = currentClue?.revealMediaUrl
   const gamePhase = game?.room.phase
+  const phaseRef = useRef(gamePhase)
+  useLayoutEffect(() => { phaseRef.current = gamePhase }, [gamePhase])
   const activeMediaUrl = gamePhase === 'REVEAL' ? currentRevealMediaUrl : currentMediaUrl
-  const secondsRemaining = useCountdown(game?.room.deadline, currentClue?.timerSeconds ?? 0)
+  const secondsRemaining = useCountdown(gamePhase === 'ANSWERS_CLOSED' ? undefined : game?.room.deadline,
+    gamePhase === 'ANSWERS_CLOSED' ? 0 : game?.room.pausedSeconds ?? currentClue?.timerSeconds ?? 0)
   const audioRef = useRef<HTMLAudioElement>(null)
   const playbackRef = useRef<{ key: string; player: ReturnType<typeof createAudioPlayback> } | null>(null)
   const audioOperation = useRef(0)
@@ -47,11 +103,25 @@ export function DisplayPage() {
   const { delaySeconds, playCount } = playbackSettings(revealAudio ? currentClue?.revealMediaPlayback : currentClue?.mediaPlayback, revealAudio)
   const [audioReady, setAudioReady] = useState(false)
   const [audioError, setAudioError] = useState<string | null>(null)
+  const [audioStatus, setAudioStatus] = useState<PlaybackState | 'buffering'>('idle')
+  const playbackState = useRef<PlaybackState>('idle')
   const [isFullscreen, setIsFullscreen] = useState(Boolean(document.fullscreenElement))
   const [presentationNotice, setPresentationNotice] = useState<string | null>(null)
   const [boardZoom, setBoardZoom] = useState({ roomCode, percent: 100 })
-  const zoomPercent = boardZoom.roomCode === roomCode ? boardZoom.percent : 100
-  const setZoom = (percent: number) => setBoardZoom({ roomCode, percent })
+  if (boardZoom.roomCode !== roomCode) {
+    setBoardZoom({ roomCode, percent: 100 })
+  }
+  const viewKey = JSON.stringify([roomCode, currentClueId, gamePhase === 'BOARD' ? 'board' : revealAudio ? 'reveal' : 'question'])
+  const [clueZoom, setClueZoom] = useState({ viewKey, percent: 100 })
+  if (gamePhase !== 'PAUSED' && clueZoom.viewKey !== viewKey) {
+    setClueZoom({ viewKey, percent: 100 })
+  }
+  const zoomPercent = gamePhase === 'BOARD'
+    ? boardZoom.roomCode === roomCode ? boardZoom.percent : 100
+    : clueZoom.viewKey === viewKey ? clueZoom.percent : 100
+  const setZoom = (percent: number) => gamePhase === 'BOARD'
+    ? setBoardZoom({ roomCode, percent })
+    : setClueZoom({ viewKey, percent })
 
   useEffect(() => {
     function updateFullscreenState() {
@@ -67,33 +137,82 @@ export function DisplayPage() {
     const key = JSON.stringify([currentClueId, revealAudio, activeMediaUrl, delaySeconds, playCount])
     if (playbackRef.current?.key !== key) {
       playbackRef.current?.player.dispose()
-      audio.src = activeMediaUrl
-      audio.load()
+      if (audio.src !== new URL(activeMediaUrl, window.location.href).href || audio.error) {
+        audio.src = activeMediaUrl
+        audio.load()
+      }
+      setAudioError(null)
       audio.muted = false
       audio.volume = 1
       playbackRef.current = {
         key,
         player: createAudioPlayback(audio, { delaySeconds, playCount }, {
-          onState: (state) => {
-            if (state === 'playing' || state === 'waiting') {
+          onState: (state, plays) => {
+            playbackState.current = state
+            setAudioStatus(state)
+            traceEvent('audio:state', { phase: phaseRef.current, clueId: currentClueId, mediaId: mediaIdentity(activeMediaUrl),
+              plays, delaySeconds, playCount })
+            if (state === 'playing') {
               setAudioReady(true)
               setAudioError(null)
             }
           },
-          onError: () => {
-            setAudioReady(false)
-            setAudioError('Could not play audio. Select Play audio to retry, or check the linked song.')
+          onError: (failure) => {
+            if (failure === 'autoplay') setAudioReady(false)
+            setAudioError(playbackFailureMessages[failure])
+            traceEvent('audio:failure', { clueId: currentClueId, mediaId: mediaIdentity(activeMediaUrl), error: failure })
           },
         }),
       }
     }
     return playbackRef.current.player
-  }, [currentClueId, revealAudio, activeMediaUrl, delaySeconds, playCount])
+  }, [currentClueId, revealAudio, activeMediaUrl, delaySeconds, playCount, setAudioReady, setAudioError, setAudioStatus])
+
+  useEffect(() => {
+    const audio = audioRef.current
+    if (!audio) return
+    const tracing = diagnosticsEnabled()
+    const events = tracing
+      ? ['loadedmetadata', 'canplay', 'waiting', 'stalled', 'playing', 'error', 'ended', 'progress', 'timeupdate']
+      : ['waiting', 'stalled', 'playing']
+    function changed(event: Event) {
+      if (!audio) return
+      if (tracing) traceEvent(`audio:${event.type}`, {
+        phase: gamePhase, clueId: currentClueId, mediaId: activeMediaUrl ? mediaIdentity(activeMediaUrl) : 'none',
+        actualMediaId: mediaIdentity(audio.currentSrc), position: audio.currentTime, duration: audio.duration,
+        readyState: audio.readyState, networkState: audio.networkState,
+        buffered: audio.buffered.length ? audio.buffered.end(audio.buffered.length - 1) : 0,
+      })
+      if (activeMediaUrl && mediaIdentity(audio.currentSrc) === mediaIdentity(activeMediaUrl) &&
+        (playbackState.current === 'starting' || playbackState.current === 'playing')) {
+        if (event.type === 'waiting' || event.type === 'stalled') setAudioStatus('buffering')
+        else if (event.type === 'playing') setAudioStatus('playing')
+      }
+    }
+    events.forEach(event => audio.addEventListener(event, changed))
+    const observer = tracing && typeof PerformanceObserver !== 'undefined' ? new PerformanceObserver(list => {
+      for (const entry of list.getEntries() as PerformanceResourceTiming[]) {
+        const mediaId = mediaIdentity(entry.name)
+        if (mediaId === 'other') continue
+        traceEvent('audio:resource', { mediaId, ms: entry.duration,
+          headerMs: entry.responseStart - entry.requestStart, transferBytes: entry.transferSize, decodedBytes: entry.decodedBodySize })
+      }
+    }) : null
+    observer?.observe({ type: 'resource' })
+    return () => {
+      events.forEach(event => audio.removeEventListener(event, changed))
+      observer?.disconnect()
+    }
+  }, [gamePhase, currentClueId, activeMediaUrl])
 
   useEffect(() => {
     audioOperation.current += 1
     if (gamePhase === 'PAUSED') {
       playbackRef.current?.player.pause()
+      return
+    }
+    if (gamePhase === 'CLUE_READY' && activeMediaUrl) {
+      getPlayback()
       return
     }
     if (
@@ -108,6 +227,7 @@ export function DisplayPage() {
     }
     playbackRef.current?.player.dispose()
     playbackRef.current = null
+    if (gamePhase === 'ANSWERS_CLOSED') return
     const audio = audioRef.current
     audio?.pause()
     audio?.removeAttribute('src')
@@ -195,7 +315,7 @@ export function DisplayPage() {
     }
 
     if (audioPrepared && fullscreenPrepared) {
-      setPresentationNotice('Audio and fullscreen are ready.')
+      setPresentationNotice('Audio permission is prepared and fullscreen is active. Songs may still need to load.')
     } else if (audioPrepared) {
       setPresentationNotice('Audio is ready. Use your browser controls if fullscreen is unavailable.')
     } else if (fullscreenPrepared) {
@@ -226,19 +346,31 @@ export function DisplayPage() {
   }
 
   const isPaused = game.room.phase === 'PAUSED'
+  const isQuestion = Boolean(currentClue) && (
+    gamePhase === 'CLUE_READY' || gamePhase === 'ACCEPTING_ANSWERS' ||
+    gamePhase === 'FINAL_QUESTION' || gamePhase === 'ANSWERS_CLOSED')
+  const fittedView = gamePhase === 'BOARD' || isQuestion || (gamePhase === 'REVEAL' && Boolean(currentClue))
   const allAnswered = game.connection === 'connected' &&
     (game.room.phase === 'ACCEPTING_ANSWERS' || game.room.phase === 'FINAL_QUESTION') &&
     Boolean(game.room.answerProgress && game.room.answerProgress.total > 0 &&
       game.room.answerProgress.answered === game.room.answerProgress.total)
 
   return (
-    <div className={[styles.shell, game.room.phase === 'BOARD' ? styles.boardShell : ''].join(' ')}>
+    <div className={[styles.shell, fittedView ? styles.fittedShell : ''].join(' ')}>
       <audio ref={audioRef} preload="auto" aria-label="Trivia music clip" />
       <header className={styles.topBar}>
         <span className={styles.brand}>FriendsTrivia</span>
         <div className={styles.topBarRight}>
+          {fittedView ? (
+            <div className={styles.zoomControls} role="group" aria-label="Display zoom">
+              <Button variant="ghost" aria-label="Zoom out" title="Zoom out" disabled={zoomPercent <= 50} onClick={() => setZoom(zoomPercent - 10)}>-</Button>
+              <output aria-label="Display zoom level">{zoomPercent}%</output>
+              <Button variant="ghost" aria-label="Zoom in" title="Zoom in" disabled={zoomPercent >= 200} onClick={() => setZoom(zoomPercent + 10)}>+</Button>
+              <Button variant="ghost" aria-label="Fit to screen" title="Fit to screen" onClick={() => setZoom(100)}>Fit</Button>
+            </div>
+          ) : null}
           <ConnectionStatusPill status={game.connection} />
-          {game.room.phase !== 'LOBBY' && !isFullscreen ? (
+          {game.room.phase !== 'LOBBY' && !isFullscreen && !audioError ? (
             <Button variant="primary" onClick={() => void prepareDisplay()}>
               Prepare display
             </Button>
@@ -256,6 +388,17 @@ export function DisplayPage() {
           ) : null}
         </div>
       </header>
+
+      {activeMediaUrl && (gamePhase === 'ACCEPTING_ANSWERS' || gamePhase === 'FINAL_QUESTION' || gamePhase === 'REVEAL') ? (
+        <div className={styles.audioStatus}>
+          <span role="status">{audioError ? 'Song could not play' : audioStatus === 'waiting' ? `Audio delay (${delaySeconds}s configured)`
+            : audioStatus === 'starting' || audioStatus === 'idle' ? 'Preparing song...'
+              : audioStatus === 'buffering' ? 'Song buffering...'
+                : audioStatus === 'playing' ? 'Song playing'
+                  : audioStatus === 'finished' ? 'Song finished' : 'Song paused'}</span>
+          {audioError ? <p role="alert">{audioError}</p> : null}
+        </div>
+      ) : null}
 
       {game.connection !== 'connected' ? (
         <div className={styles.bannerWrapper}>
@@ -303,12 +446,6 @@ export function DisplayPage() {
 
       {game.room.phase === 'BOARD' ? (
         <div className={[styles.main, styles.boardMain].join(' ')}>
-          <div className={styles.zoomControls} role="group" aria-label="Board zoom">
-            <Button variant="secondary" disabled={zoomPercent <= 50} onClick={() => setZoom(zoomPercent - 10)}>Zoom out</Button>
-            <output aria-label="Board zoom level">{zoomPercent}%</output>
-            <Button variant="secondary" disabled={zoomPercent >= 200} onClick={() => setZoom(zoomPercent + 10)}>Zoom in</Button>
-            <Button variant="secondary" onClick={() => setZoom(100)}>Fit board</Button>
-          </div>
           <CategoryBoard categories={game.categories} clues={game.clues} fit zoom={zoomPercent / 100} />
         </div>
       ) : null}
@@ -336,12 +473,8 @@ export function DisplayPage() {
         </div>
       ) : null}
 
-      {(game.room.phase === 'CLUE_READY' ||
-        game.room.phase === 'ACCEPTING_ANSWERS' ||
-        game.room.phase === 'FINAL_QUESTION' ||
-        game.room.phase === 'ANSWERS_CLOSED') &&
-      currentClue ? (
-        <div className={styles.main}>
+      {isQuestion && currentClue ? (
+        <FittedClue key={clueZoom.viewKey} zoom={zoomPercent / 100}>
           {allAnswered ? <p className={styles.answersComplete} role="status">All answers received</p> : null}
           <span className={styles.categoryLabel}>
             {game.room.finalRound
@@ -369,15 +502,16 @@ export function DisplayPage() {
           )}
           <GameTimer
             size="display"
+            variant="line"
             secondsRemaining={secondsRemaining}
             totalSeconds={currentClue.timerSeconds}
             paused={isPaused}
           />
-        </div>
+        </FittedClue>
       ) : null}
 
       {game.room.phase === 'REVEAL' && currentClue ? (
-        <div className={styles.main}>
+        <FittedClue key={clueZoom.viewKey} zoom={zoomPercent / 100}>
           <span className={styles.categoryLabel}>Answer revealed</span>
           {currentClue.special ? (
             <div className={styles.specialBanner}>
@@ -428,8 +562,7 @@ export function DisplayPage() {
               </ol>
             </div>
           ) : null}
-          <Leaderboard entries={game.leaderboard} />
-        </div>
+        </FittedClue>
       ) : null}
 
       {game.room.phase === 'LEADERBOARD' ? (
