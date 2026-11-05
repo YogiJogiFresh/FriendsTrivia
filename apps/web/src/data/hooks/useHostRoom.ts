@@ -59,6 +59,7 @@ export function useHostRoom(roomCode: string): HostRoomResult {
     let generation = 0
     let inFlight = false
     let connectionId = socket.id
+    let snapshotSequence = 0
 
     function connectAsHost() {
       if (cancelled || inFlight || !socket.connected) return
@@ -67,7 +68,7 @@ export function useHostRoom(roomCode: string): HostRoomResult {
       emitWithAck<RawSnapshot>('host:connect', { code: roomCode, hostToken })
         .then((next) => {
           if (!cancelled && attempt === generation) {
-            setSnapshot(next)
+            handleSnapshot(next)
             setError(null)
             setLoading(false)
           }
@@ -82,7 +83,10 @@ export function useHostRoom(roomCode: string): HostRoomResult {
     }
 
     function handleSnapshot(next: RawSnapshot) {
-      if (!cancelled && next.code === roomCode) setSnapshot(next)
+      if (!cancelled && next.code === roomCode && (next.snapshotSequence ?? 0) >= snapshotSequence) {
+        snapshotSequence = next.snapshotSequence ?? 0
+        setSnapshot(next)
+      }
     }
 
     function handleRequests(requests: HostRecoveryRequest[]) {
@@ -91,6 +95,7 @@ export function useHostRoom(roomCode: string): HostRoomResult {
     function disconnected() {
       generation++
       inFlight = false
+      snapshotSequence = 0
       if (!cancelled) setRecoveryRequests([])
     }
     function connected() {

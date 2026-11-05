@@ -154,11 +154,13 @@ export interface RoomSummary {
   locked: boolean
   stateVersion: number
   deadline?: string
+  pausedSeconds?: number
   finalRound: boolean
   hasFinalQuestion: boolean
   teams: string[]
   specialVotedPlayerIds: string[]
   forcedPlayerId?: string
+  answerProgress?: { answered: number; total: number }
 }
 
 export interface GameState {

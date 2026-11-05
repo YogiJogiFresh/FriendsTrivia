@@ -88,14 +88,6 @@
   font-size: var(--font-size-sm);
 }
 
-.revealGif {
-  display: block;
-  max-width: min(100%, 32rem);
-  max-height: 20rem;
-  border-radius: var(--radius-lg);
-  object-fit: contain;
-}
-
 .notice {
   margin-bottom: var(--space-4);
 }

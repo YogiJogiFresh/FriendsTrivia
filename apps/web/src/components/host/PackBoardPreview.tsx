@@ -23,11 +23,11 @@ function PreviewGif({ gif }: { gif: RevealGif }) {
       ) : (
         <img src={gif.url} alt={gif.alt || 'Answer reveal GIF'} onError={() => setFailed(true)} />
       )}
-      <figcaption>
+      {gif.provider !== 'url' ? <figcaption>
         <a href={gif.sourceUrl} target="_blank" rel="noreferrer">
-          {gif.provider === 'giphy' ? 'GIPHY' : gif.provider === 'tenor' ? 'Tenor' : 'Linked GIF'}
+          {gif.provider === 'giphy' ? 'GIPHY' : 'Tenor'}
         </a>
-      </figcaption>
+      </figcaption> : null}
     </figure>
   )
 }

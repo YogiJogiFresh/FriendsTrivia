@@ -19,6 +19,16 @@
   margin-left: auto;
 }
 
+.completion {
+  margin: 0;
+  color: var(--color-success);
+  font-weight: var(--font-weight-bold);
+}
+
+.completion:empty {
+  display: none;
+}
+
 @media (max-width: 680px) {
   .rightActions {
     width: 100%;

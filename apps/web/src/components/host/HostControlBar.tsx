@@ -4,6 +4,7 @@ import styles from './HostControlBar.module.css'
 
 export interface HostControlBarProps {
   phase: GamePhase
+  allAnswered?: boolean
   hasCurrentClue?: boolean
   onGoBack?: () => void
   onResetClue?: () => void
@@ -21,6 +22,7 @@ export interface HostControlBarProps {
  */
 export function HostControlBar({
   phase,
+  allAnswered = false,
   hasCurrentClue = false,
   onGoBack,
   onResetClue,
@@ -42,6 +44,10 @@ export function HostControlBar({
 
   return (
     <div className={styles.bar} role="toolbar" aria-label="Host controls">
+      <p role="status" className={styles.completion}>
+        {allAnswered ? 'All answers received. Close answers, then reveal the answer.' :
+          phase === 'ANSWERS_CLOSED' ? 'Answers closed. Ready to reveal the answer.' : ''}
+      </p>
       <div className={styles.row}>
         <Button variant="secondary" onClick={onGoBack} disabled={!hasCurrentClue}>
           Go Back
@@ -53,7 +59,7 @@ export function HostControlBar({
           Skip/Void
         </Button>
         <Button
-          variant="secondary"
+          variant={allAnswered ? 'primary' : 'secondary'}
           onClick={onCloseAnswers}
           disabled={phase !== 'ACCEPTING_ANSWERS' && phase !== 'FINAL_QUESTION'}
         >

@@ -49,6 +49,9 @@ export function DisplayPage() {
   const [audioError, setAudioError] = useState<string | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(Boolean(document.fullscreenElement))
   const [presentationNotice, setPresentationNotice] = useState<string | null>(null)
+  const [boardZoom, setBoardZoom] = useState({ roomCode, percent: 100 })
+  const zoomPercent = boardZoom.roomCode === roomCode ? boardZoom.percent : 100
+  const setZoom = (percent: number) => setBoardZoom({ roomCode, percent })
 
   useEffect(() => {
     function updateFullscreenState() {
@@ -223,9 +226,13 @@ export function DisplayPage() {
   }
 
   const isPaused = game.room.phase === 'PAUSED'
+  const allAnswered = game.connection === 'connected' &&
+    (game.room.phase === 'ACCEPTING_ANSWERS' || game.room.phase === 'FINAL_QUESTION') &&
+    Boolean(game.room.answerProgress && game.room.answerProgress.total > 0 &&
+      game.room.answerProgress.answered === game.room.answerProgress.total)
 
   return (
-    <div className={styles.shell}>
+    <div className={[styles.shell, game.room.phase === 'BOARD' ? styles.boardShell : ''].join(' ')}>
       <audio ref={audioRef} preload="auto" aria-label="Trivia music clip" />
       <header className={styles.topBar}>
         <span className={styles.brand}>FriendsTrivia</span>
@@ -296,7 +303,13 @@ export function DisplayPage() {
 
       {game.room.phase === 'BOARD' ? (
         <div className={[styles.main, styles.boardMain].join(' ')}>
-          <CategoryBoard categories={game.categories} clues={game.clues} />
+          <div className={styles.zoomControls} role="group" aria-label="Board zoom">
+            <Button variant="secondary" disabled={zoomPercent <= 50} onClick={() => setZoom(zoomPercent - 10)}>Zoom out</Button>
+            <output aria-label="Board zoom level">{zoomPercent}%</output>
+            <Button variant="secondary" disabled={zoomPercent >= 200} onClick={() => setZoom(zoomPercent + 10)}>Zoom in</Button>
+            <Button variant="secondary" onClick={() => setZoom(100)}>Fit board</Button>
+          </div>
+          <CategoryBoard categories={game.categories} clues={game.clues} fit zoom={zoomPercent / 100} />
         </div>
       ) : null}
 
@@ -329,6 +342,7 @@ export function DisplayPage() {
         game.room.phase === 'ANSWERS_CLOSED') &&
       currentClue ? (
         <div className={styles.main}>
+          {allAnswered ? <p className={styles.answersComplete} role="status">All answers received</p> : null}
           <span className={styles.categoryLabel}>
             {game.room.finalRound
               ? 'Final Question'
@@ -378,15 +392,15 @@ export function DisplayPage() {
           {currentClue.revealGif ? (
             <figure className={styles.revealGif}>
               <img src={currentClue.revealGif.url} alt={currentClue.revealGif.alt} />
-              <figcaption>
+              {currentClue.revealGif.provider !== 'url' ? <figcaption>
                 <a href={currentClue.revealGif.sourceUrl} target="_blank" rel="noreferrer">
                   {currentClue.revealGif.provider === 'giphy'
                     ? 'GIPHY'
                     : currentClue.revealGif.provider === 'tenor'
                       ? 'Tenor'
-                      : 'Linked GIF'}
+                      : ''}
                 </a>
-              </figcaption>
+              </figcaption> : null}
             </figure>
           ) : null}
           {currentClue.type === 'price-slider' &&

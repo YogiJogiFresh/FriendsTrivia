@@ -80,6 +80,40 @@ async function disconnected(game: Awaited<ReturnType<typeof fixture>>, playerId:
 }
 
 describe('socket persistence acknowledgements', () => {
+  it('publishes small coalesced progress for 50 players without a host or per-viewer board reads', async () => {
+    const game = await fixture(true)
+    const players = await Promise.all(Array.from({ length: 50 }, () => game.client()))
+    for (const [index, player] of players.entries())
+      expect((await emit(player, 'player:join', { code: game.room.code, nickname: `Player ${index}` })).ok).toBe(true)
+    const watcher = await game.client()
+    await emit(watcher, 'room:watch', { code: game.room.code })
+    let room = await game.engine.startGame(game.room)
+    room = await game.engine.selectClue(room, game.clueId)
+    await new Promise((resolve) => setTimeout(resolve, 150))
+    const progress: Array<{ answerProgress: { answered: number; total: number } }> = []
+    const fullSnapshots: unknown[] = []
+    watcher.on('room:answer-progress', (next) => progress.push(next))
+    watcher.on('room:snapshot', (next) => fullSnapshots.push(next))
+    const boardReads = vi.spyOn(game.rooms.store, 'board')
+    const submissionReads = vi.spyOn(game.rooms.store, 'submissions')
+    const answers = await Promise.all(players.map((player) =>
+      emit(player, 'player:answer', { answer: 50,
+        expectedRoomGeneration: room.ref.generation, expectedAttempt: room.state.attempt,
+        expectedWindow: room.state.window })))
+    expect(answers.filter(({ ok }) => !ok)).toEqual([])
+    await vi.waitFor(() => expect(progress.at(-1)?.answerProgress).toEqual({ answered: 50, total: 50 }))
+    expect(fullSnapshots).toHaveLength(0)
+    expect(boardReads).not.toHaveBeenCalled()
+    expect(submissionReads.mock.calls.length).toBeLessThan(10)
+    expect(progress.length).toBeLessThan(10)
+    for (const next of progress) {
+      expect(Object.keys(next).sort()).toEqual([
+        'answerProgress', 'attempt', 'clueId', 'code', 'phase',
+        'roomGeneration', 'snapshotSequence', 'stateVersion', 'window',
+      ])
+    }
+    expect((await game.engine.publicSnapshot(room)).phase).toBe('ACCEPTING_ANSWERS')
+  }, 20000)
   it('shares reconnects still executing on the server instead of queuing another mutation', async () => {
     const game = await fixture()
     const original = await game.client()

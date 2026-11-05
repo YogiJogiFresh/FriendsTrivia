@@ -10,9 +10,16 @@ export interface CategoryBoardProps {
   /** Host mode: clue tiles become clickable buttons. */
   interactive?: boolean
   onSelectClue?: (clueId: string) => void
+  fit?: boolean
+  zoom?: number
 }
 
-type TileStyle = CSSProperties & { '--accent-color'?: string; '--column-count'?: number }
+type TileStyle = CSSProperties & {
+  '--accent-color'?: string
+  '--column-count'?: number
+  '--row-count'?: number
+  '--board-zoom'?: number
+}
 
 /**
  * Jeopardy-style category board. Categories are rendered as columns and
@@ -28,6 +35,8 @@ export function CategoryBoard({
   activeClueId,
   interactive = false,
   onSelectClue,
+  fit = false,
+  zoom = 1,
 }: CategoryBoardProps) {
   const cluesByCategory = new Map<string, Clue[]>()
   for (const category of categories) {
@@ -37,10 +46,14 @@ export function CategoryBoard({
     cluesByCategory.set(category.id, categoryClues)
   }
 
-  const boardStyle: TileStyle = { '--column-count': categories.length }
+  const boardStyle: TileStyle = {
+    '--column-count': Math.max(1, categories.length),
+    '--row-count': Math.max(0, ...[...cluesByCategory.values()].map((rows) => rows.length)) + 1,
+    '--board-zoom': zoom,
+  }
 
   return (
-    <div className={styles.boardWrapper}>
+    <div className={[styles.boardWrapper, fit ? styles.fit : ''].filter(Boolean).join(' ')}>
       <div
         className={styles.board}
         style={boardStyle}
@@ -51,6 +64,8 @@ export function CategoryBoard({
           <div
             key={category.id}
             className={styles.categoryHeader}
+            title={category.title}
+            aria-label={category.title}
             style={
               {
                 gridColumn: columnIndex + 1,
@@ -59,7 +74,7 @@ export function CategoryBoard({
               } as TileStyle
             }
           >
-            {category.title}
+            <span>{category.title}</span>
           </div>
         ))}
 

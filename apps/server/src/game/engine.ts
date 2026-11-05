@@ -39,6 +39,7 @@ function assertTransition(from: GamePhase, to: GamePhase): void {
   }
 }
 export class GameEngine extends EventEmitter {
+  private snapshotSequence = 0
   private get result(): RoundResult | undefined {
     const change = this.rooms.pendingChange()
     return change?.kind === 'settle' ? change.result : undefined
@@ -95,6 +96,28 @@ export class GameEngine extends EventEmitter {
   async hostSnapshot(room: RoomRecord) {
     return (await this.snapshotPair(room)).host!
   }
+  private async answerState(room: RoomRecord, includeHost: boolean) {
+    const accepting = room.state.phase === 'ACCEPTING_ANSWERS' || room.state.phase === 'FINAL_QUESTION'
+    const players = await this.rooms.scores(room.id)
+    const submissions = room.state.activeClueId && (includeHost || accepting) ? await this.submissions(room) : []
+    const eligible = this.activeSpecial(room) === 'forced_player'
+      ? players.filter(({ playerId }) => playerId === room.state.forcedPlayerId)
+      : players
+    const answered = new Set(submissions.map(({ playerId }) => playerId))
+    return { players, submissions, answerProgress: accepting ? {
+      answered: eligible.filter(({ playerId }) => answered.has(playerId)).length,
+      total: eligible.length,
+    } : undefined }
+  }
+  async answerProgressSnapshot(room: RoomRecord) {
+    return this.readRoom(room.id, async (current) => ({
+      code: current.code, roomGeneration: current.ref.generation,
+      stateVersion: current.stateVersion, snapshotSequence: ++this.snapshotSequence,
+      phase: current.state.phase, clueId: current.state.activeClueId,
+      attempt: current.state.attempt ?? 0, window: current.state.window ?? 0,
+      answerProgress: (await this.answerState(current, false)).answerProgress,
+    }))
+  }
   async snapshotPair(room: RoomRecord, includeHost = true) {
     return this.readRoom(room.id, async (room) => {
 
@@ -109,11 +132,13 @@ export class GameEngine extends EventEmitter {
       const clueConfig = clue
         ? (clue.config)
         : undefined
+      const { players, submissions, answerProgress } = await this.answerState(room, includeHost)
       const publicSnapshot = {
         code: room.code,
         joinUrl: `${this.joinBaseUrl}/play/${room.code}`,
         phase: room.state.phase,
         stateVersion: room.stateVersion,
+        snapshotSequence: ++this.snapshotSequence,
         roomGeneration: room.ref.generation,
         attempt: room.state.attempt ?? 0,
         window: room.state.window ?? 0,
@@ -121,6 +146,8 @@ export class GameEngine extends EventEmitter {
         joiningLocked: room.joiningLocked,
         teams: room.settings.teams ?? [],
         deadline: room.state.deadline,
+        pausedSeconds: room.state.phase === 'PAUSED' && room.state.remainingMs !== undefined
+          ? Math.ceil(room.state.remainingMs / 1000) : undefined,
         activeClue: visibleClue
           ? {
             id: visibleClue.id,
@@ -161,7 +188,8 @@ export class GameEngine extends EventEmitter {
         forcedPlayerId: room.state.forcedPlayerId,
         usedClueIds: room.state.usedClueIds,
         board,
-        players: (await this.rooms.scores(room.id)),
+        players,
+        answerProgress,
         results: revealed && clue
           ? (await this.resultView(room)) : undefined,
       }
@@ -170,8 +198,7 @@ export class GameEngine extends EventEmitter {
         activeClue: clue
           ? { ...publicSnapshot.activeClue, config: clue.config }
           : undefined,
-        submissions: clue
-          ? (await this.submissions(room)).map(({ playerId, elapsedMs, receivedAt }) => ({ playerId, elapsedMs, receivedAt })) : [],
+        submissions: submissions.map(({ playerId, elapsedMs, receivedAt }) => ({ playerId, elapsedMs, receivedAt })),
       } : undefined
       return { public: publicSnapshot, host }
     })

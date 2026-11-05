@@ -85,6 +85,7 @@ export interface RawSnapshot {
   joinUrl: string
   phase: GamePhase
   stateVersion: number
+  snapshotSequence?: number
   roomGeneration?: string
   attempt?: number
   window?: number
@@ -92,11 +93,13 @@ export interface RawSnapshot {
   joiningLocked: boolean
   teams?: string[]
   deadline?: string
+  pausedSeconds?: number
   finalRound?: boolean
   hasFinalQuestion?: boolean
   wageredPlayerIds?: string[]
   specialVotedPlayerIds?: string[]
   forcedPlayerId?: string
+  answerProgress?: { answered: number; total: number }
   activeClue?: RawActiveClue
   usedClueIds: string[]
   board: RawBoardRow[]
@@ -116,6 +119,20 @@ export function expectedRoomContext(snapshot: RawSnapshot | null) {
     expectedWindow: snapshot?.window,
     expectedWagerGeneration: snapshot?.wagerGeneration,
   }
+}
+
+export type RawAnswerProgress = Pick<RawSnapshot,
+  'code' | 'roomGeneration' | 'stateVersion' | 'snapshotSequence' | 'phase' | 'attempt' | 'window' | 'answerProgress'
+> & { clueId?: string }
+
+export function applyAnswerProgress(snapshot: RawSnapshot | null, update: RawAnswerProgress): RawSnapshot | null {
+  if (!snapshot || snapshot.code !== update.code ||
+    snapshot.roomGeneration !== update.roomGeneration ||
+    snapshot.activeClue?.id !== update.clueId || snapshot.attempt !== update.attempt ||
+    snapshot.window !== update.window || snapshot.stateVersion !== update.stateVersion ||
+    snapshot.phase !== update.phase ||
+    (update.snapshotSequence ?? 0) <= (snapshot.snapshotSequence ?? 0)) return snapshot
+  return { ...snapshot, answerProgress: update.answerProgress, snapshotSequence: update.snapshotSequence }
 }
 
 const ACCENT_TOKENS = [
@@ -273,11 +290,13 @@ export function roomFromSnapshot(snapshot: RawSnapshot): RoomSummary {
     locked: snapshot.joiningLocked,
     stateVersion: snapshot.stateVersion,
     deadline: snapshot.deadline,
+    pausedSeconds: snapshot.pausedSeconds,
     finalRound: Boolean(snapshot.finalRound),
     hasFinalQuestion: Boolean(snapshot.hasFinalQuestion),
     teams: snapshot.teams ?? [],
     specialVotedPlayerIds: snapshot.specialVotedPlayerIds ?? [],
     forcedPlayerId: snapshot.forcedPlayerId,
+    answerProgress: snapshot.answerProgress,
   }
 }
 

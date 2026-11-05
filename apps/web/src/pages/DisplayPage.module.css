@@ -8,6 +8,7 @@
 }
 
 .topBar {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -55,10 +56,44 @@
 }
 
 .boardMain {
-  justify-content: center;
+  justify-content: flex-start;
+  flex: 1 1 0;
+  min-height: 0;
+  gap: var(--space-2);
+  padding: var(--space-2);
   width: 100%;
   max-width: var(--display-max-width);
   margin-inline: auto;
+}
+
+.boardShell {
+  height: 100svh;
+  height: 100dvh;
+  min-height: 0;
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
+}
+
+.boardShell .topBar {
+  padding: var(--space-2) var(--space-3);
+}
+
+.zoomControls {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+.answersComplete {
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-success);
+  border-radius: var(--radius-md);
+  color: var(--color-success);
+  font-weight: var(--font-weight-bold);
 }
 
 .lobbyLayout {

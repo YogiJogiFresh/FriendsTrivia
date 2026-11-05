@@ -3,6 +3,7 @@ import type { GameState } from '../types'
 import { emitWithAck, getSocket } from '../../lib/socketClient'
 import {
   categoriesFromBoard,
+  applyAnswerProgress,
   cluesFromSnapshot,
   leaderboardFromPlayers,
   priceResultsFromSnapshot,
@@ -10,7 +11,7 @@ import {
   roomFromSnapshot,
   scoreDeltasFromSnapshot,
 } from '../../lib/snapshot'
-import type { RawSnapshot } from '../../lib/snapshot'
+import type { RawSnapshot, RawAnswerProgress } from '../../lib/snapshot'
 import { useConnectionStatus } from './useConnectionStatus'
 
 export interface RoomWatchResult {
@@ -38,17 +39,23 @@ export function useRoomWatch(roomCode: string): RoomWatchResult {
     setSnapshot(null)
 
     const socket = getSocket()
+    let latestProgress: RawAnswerProgress | null = null
+    let watchGeneration = 0
 
     function watch() {
+      const request = ++watchGeneration
+      latestProgress = null
+      setLoading(true)
+      setSnapshot(null)
       emitWithAck<RawSnapshot>('room:watch', { code: roomCode })
         .then((next) => {
-          if (!cancelled) {
-            setSnapshot(next)
+          if (!cancelled && request === watchGeneration) {
+            handleSnapshot(next)
             setLoading(false)
           }
         })
         .catch((err: Error) => {
-          if (!cancelled) {
+          if (!cancelled && request === watchGeneration) {
             setError(err.message)
             setLoading(false)
           }
@@ -56,16 +63,28 @@ export function useRoomWatch(roomCode: string): RoomWatchResult {
     }
 
     function handleSnapshot(next: RawSnapshot) {
-      if (!cancelled && next.code === roomCode) setSnapshot(next)
+      if (!cancelled && next.code === roomCode) setSnapshot(current =>
+        current?.roomGeneration === next.roomGeneration &&
+        (current?.snapshotSequence ?? 0) > (next.snapshotSequence ?? 0) ? current :
+          latestProgress ? applyAnswerProgress(next, latestProgress) : next)
+    }
+
+    function handleProgress(next: RawAnswerProgress) {
+      if (!cancelled && next.code === roomCode) {
+        if ((next.snapshotSequence ?? 0) > (latestProgress?.snapshotSequence ?? 0)) latestProgress = next
+        setSnapshot(current => applyAnswerProgress(current, next))
+      }
     }
 
     watch()
     socket.on('room:snapshot', handleSnapshot)
+    socket.on('room:answer-progress', handleProgress)
     socket.on('connect', watch)
 
     return () => {
       cancelled = true
       socket.off('room:snapshot', handleSnapshot)
+      socket.off('room:answer-progress', handleProgress)
       socket.off('connect', watch)
     }
   }, [roomCode])

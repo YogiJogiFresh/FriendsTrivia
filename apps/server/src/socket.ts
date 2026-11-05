@@ -137,9 +137,23 @@ export function registerSocketServer(app: FastifyInstance, rooms: RoomRepository
           for (const request of recoveryRequests.values())
             if (request.ref.id === roomId) removeRequest(request, 'unavailable')
         const hasHost = Boolean(io.sockets.adapter.rooms.get(`host:${roomId}`)?.size)
-        if (!hasHost && (!full || !io.sockets.adapter.rooms.get(`room:${roomId}`)?.size)) return
+        if (!hasHost && !io.sockets.adapter.rooms.get(`room:${roomId}`)?.size) return
+        if (!full && !hasHost) {
+          io.to(`room:${room.id}`).emit('room:answer-progress', await engine.answerProgressSnapshot(room))
+          return
+        }
         const snapshots = await engine.snapshotPair(room, hasHost)
         if (full) io.to(`room:${room.id}`).emit('room:snapshot', snapshots.public)
+        else {
+          const snapshot = snapshots.public
+          io.to(`room:${room.id}`).emit('room:answer-progress', {
+            code: snapshot.code, roomGeneration: snapshot.roomGeneration,
+            stateVersion: snapshot.stateVersion, snapshotSequence: snapshot.snapshotSequence,
+            phase: snapshot.phase, clueId: snapshot.activeClue?.id,
+            attempt: snapshot.attempt, window: snapshot.window,
+            answerProgress: snapshot.answerProgress,
+          })
+        }
         if (snapshots.host) emitHostSnapshot(room.id, snapshots.host)
       }).catch((error: unknown) => {
         app.log.error({ err: error }, 'Snapshot broadcast failed')
@@ -169,7 +183,8 @@ export function registerSocketServer(app: FastifyInstance, rooms: RoomRepository
   }
   const broadcast = (roomId: string) => queueSnapshot(roomId, true)
   const queueHostSnapshot = (roomId: string) => {
-    if (io.sockets.adapter.rooms.get(`host:${roomId}`)?.size) queueSnapshot(roomId, false)
+    if (io.sockets.adapter.rooms.get(`host:${roomId}`)?.size ||
+      io.sockets.adapter.rooms.get(`room:${roomId}`)?.size) queueSnapshot(roomId, false)
   }
   engine.on('roomUpdated', broadcast)
   engine.on('hostUpdated', queueHostSnapshot)

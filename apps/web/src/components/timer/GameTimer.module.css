@@ -74,3 +74,41 @@
 .paused .value {
   color: var(--color-text-faint);
 }
+
+.timer.line {
+  width: 100%;
+  height: auto;
+  gap: var(--space-3);
+}
+
+.lineTrack {
+  flex: 1;
+  height: 6px;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--color-border);
+}
+
+.lineProgress {
+  display: block;
+  height: 100%;
+  background: var(--timer-color);
+  transform-origin: left;
+  transition: transform var(--duration-base) linear;
+}
+
+.timer.line .value {
+  position: static;
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+}
+
+.paused .lineTrack {
+  opacity: 0.45;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lineProgress {
+    transition: none;
+  }
+}

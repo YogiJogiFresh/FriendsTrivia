@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { expectedRoomContext, type RawSnapshot } from './snapshot'
+import { applyAnswerProgress, expectedRoomContext, roomFromSnapshot, type RawSnapshot } from './snapshot'
 
 const snapshot: RawSnapshot = {
   code: 'ABC123',
@@ -25,6 +25,7 @@ describe('expectedRoomContext', () => {
       expectedWindow: 4,
       expectedWagerGeneration: 2,
     })
+
   })
 
   it('uses the latest generations after a reset or replacement', () => {
@@ -50,5 +51,26 @@ describe('expectedRoomContext', () => {
     expect(Object.values(expectedRoomContext(null))).toEqual([
       undefined, undefined, undefined, undefined, undefined,
     ])
+  })
+})
+
+describe('answer progress', () => {
+  const active = { ...snapshot, phase: 'ACCEPTING_ANSWERS' as const, snapshotSequence: 10 }
+  const update = { ...active, snapshotSequence: 11, answerProgress: { answered: 2, total: 2 } }
+
+  it('merges aggregate progress without replacing board data or leaking private submissions', () => {
+    const next = applyAnswerProgress(active, update)!
+    expect(next.board).toBe(active.board)
+    expect(roomFromSnapshot(next).answerProgress).toEqual({ answered: 2, total: 2 })
+    expect(next).not.toHaveProperty('submissions')
+  })
+
+  it('rejects stale progress, other rooms, and previous clue/window generations', () => {
+    for (const change of [
+      { snapshotSequence: 9 }, { snapshotSequence: 10 }, { code: 'OTHER' },
+      { roomGeneration: 'old' }, { attempt: 2 }, { window: 3 },
+      { stateVersion: 6 }, { clueId: 'old-clue' }, { phase: 'ANSWERS_CLOSED' as const },
+    ]) expect(applyAnswerProgress(active, { ...update, ...change })).toBe(active)
+    expect(applyAnswerProgress(null, update)).toBeNull()
   })
 })

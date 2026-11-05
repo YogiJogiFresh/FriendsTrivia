@@ -42,7 +42,8 @@ export function HostRoomPage() {
   const [castDialogOpen, setCastDialogOpen] = useState(false)
 
   const currentClue = game?.clues.find((clue) => clue.id === game.currentClueId) ?? null
-  const secondsRemaining = useCountdown(game?.room.deadline, currentClue?.timerSeconds ?? 0)
+  const secondsRemaining = useCountdown(game?.room.phase === 'ANSWERS_CLOSED' ? undefined : game?.room.deadline,
+    game?.room.phase === 'ANSWERS_CLOSED' ? 0 : game?.room.pausedSeconds ?? currentClue?.timerSeconds ?? 0)
 
   function showNotice(message: string) {
     setNotice(message)
@@ -87,6 +88,10 @@ export function HostRoomPage() {
   const isPaused = phase === 'PAUSED'
   const wageredCount = game.wageredPlayerIds.length
   const allPlayersWagered = players.length > 0 && wageredCount === players.length
+  const allAnswered = game.connection === 'connected' &&
+    (phase === 'ACCEPTING_ANSWERS' || phase === 'FINAL_QUESTION') &&
+    Boolean(room.answerProgress && room.answerProgress.total > 0 &&
+      room.answerProgress.answered === room.answerProgress.total)
 
   function handleAdjustScoreSubmit() {
     const delta = Number(scoreDelta)
@@ -229,7 +234,7 @@ export function HostRoomPage() {
               <p>{currentClue.prompt}</p>
               {phase !== 'CLUE_READY' ? (
                 <GameTimer
-                  size="display"
+                  variant="line"
                   secondsRemaining={secondsRemaining}
                   totalSeconds={currentClue.timerSeconds}
                   paused={isPaused}
@@ -237,7 +242,7 @@ export function HostRoomPage() {
               ) : null}
               {phase === 'ACCEPTING_ANSWERS' || phase === 'FINAL_QUESTION' ? (
                 <p className={styles.noticeText}>
-                  {players.filter((player) => player.hasAnsweredCurrentClue).length}/{players.length} players answered
+                  {room.answerProgress?.answered ?? 0}/{room.answerProgress?.total ?? players.length} players answered
                 </p>
               ) : null}
             </Card>
@@ -254,9 +259,6 @@ export function HostRoomPage() {
               ) : null}
               <p>{currentClue.prompt}</p>
               {currentClue.revealedAnswer ? <p>{currentClue.revealedAnswer}</p> : null}
-              {currentClue.revealGif ? (
-                <img className={styles.revealGif} src={currentClue.revealGif.url} alt={currentClue.revealGif.alt} />
-              ) : null}
               <Leaderboard entries={game.leaderboard} />
             </Card>
           ) : null}
@@ -278,6 +280,7 @@ export function HostRoomPage() {
           {phase !== 'LOBBY' && phase !== 'FINISHED' ? (
             <HostControlBar
               phase={phase}
+              allAnswered={allAnswered}
               hasCurrentClue={Boolean(currentClue)}
               onGoBack={() => run('goBack')}
               onResetClue={() => run('resetClue')}

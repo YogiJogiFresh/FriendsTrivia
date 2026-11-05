@@ -87,3 +87,47 @@ button.clueTile:hover:not(:disabled) {
     min-height: 56px;
   }
 }
+
+.boardWrapper.fit {
+  flex: 1 1 0;
+  min-height: 0;
+  height: 100%;
+  overflow: auto;
+  scroll-snap-type: none;
+  container-type: size;
+}
+
+.fit .board {
+  min-width: 0;
+  width: calc(100% * var(--board-zoom, 1));
+  height: calc(100% * var(--board-zoom, 1));
+  grid-template-columns: repeat(var(--column-count), minmax(0, 1fr));
+  grid-template-rows: repeat(var(--row-count), minmax(0, 1fr));
+  gap: clamp(2px, 1cqh, 8px);
+  padding: 2px;
+}
+
+.fit .categoryHeader,
+.fit .clueTile {
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  padding: 2px 4px;
+}
+
+.fit .categoryHeader {
+  overflow-wrap: anywhere;
+  line-height: 1.1;
+  font-size: clamp(12px, calc(40cqh / var(--row-count) * var(--board-zoom, 1)), 20px);
+}
+
+.fit .categoryHeader span {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.fit .clueTile {
+  font-size: clamp(12px, calc(50cqh / var(--row-count) * var(--board-zoom, 1)), 32px);
+}
