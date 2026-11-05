@@ -97,6 +97,10 @@ export function registerSocketServer(app: FastifyInstance, rooms: RoomRepository
     playerSockets.set(seatKey(room.ref, playerId), socket.id)
     void socket.join(`room:${room.id}`)
   }
+  function rememberSnapshot(socket: Socket, snapshot: { roomGeneration: string; stateVersion: number; snapshotSequence: number }): void {
+    socket.data.publicCursor = { roomGeneration: snapshot.roomGeneration, stateVersion: snapshot.stateVersion,
+      snapshotSequence: snapshot.snapshotSequence }
+  }
   async function playerSnapshot(room: RoomRecord, playerId: string) {
     return engine.runRoom(room.id, async () => {
       const current = (await rooms.getById(room.id))!
@@ -145,7 +149,13 @@ export function registerSocketServer(app: FastifyInstance, rooms: RoomRepository
           return
         }
         const snapshots = await engine.snapshotPair(room, hasHost)
-        if (full) io.to(`room:${room.id}`).emit('room:snapshot', snapshots.public)
+        if (full) {
+          for (const id of io.sockets.adapter.rooms.get(`room:${room.id}`) ?? []) {
+            const player = io.sockets.sockets.get(id)
+            if (player?.data.role === 'player') rememberSnapshot(player, snapshots.public)
+          }
+          io.to(`room:${room.id}`).emit('room:snapshot', snapshots.public)
+        }
         else {
           const snapshot = snapshots.public
           io.to(`room:${room.id}`).emit('room:answer-progress', {
@@ -281,6 +291,7 @@ export function registerSocketServer(app: FastifyInstance, rooms: RoomRepository
               return
             }
             bindPlayer(socket, current, joined.player.id)
+            rememberSnapshot(socket, snapshot)
             broadcast(current.id)
           })
           return {
@@ -318,6 +329,7 @@ export function registerSocketServer(app: FastifyInstance, rooms: RoomRepository
               return
             }
             bindPlayer(socket, room, player.id)
+            rememberSnapshot(socket, snapshot)
             for (const request of recoveryRequests.values())
               if (request.ref.id === room.id && request.playerId === player.id && request.requesterId !== socket.id)
                 removeRequest(request, 'unavailable')
@@ -328,6 +340,21 @@ export function registerSocketServer(app: FastifyInstance, rooms: RoomRepository
         reconnecting = { key, promise }
         try { return await promise }
         finally { if (reconnecting?.promise === promise) reconnecting = undefined }
+      }, false)
+    })
+    socket.on('player:sync', (payload: {
+      roomGeneration?: string; stateVersion?: number; snapshotSequence?: number
+    }, ack: Ack) => {
+      handle(ack, async () => {
+        enforceInterval('player:sync', 250)
+        const ref = socket.data.roomRef as RoomRef | undefined
+        const cursor = socket.data.publicCursor as { roomGeneration: string; stateVersion: number; snapshotSequence: number } | undefined
+        return { inSync: Boolean(ref && cursor && socket.data.role === 'player' &&
+          ref.generation === payload?.roomGeneration && liveOwner(ref, socket.data.playerId) === socket.id &&
+          socket.rooms.has(`room:${ref.id}`) && cursor.roomGeneration === payload.roomGeneration &&
+          typeof payload.stateVersion === 'number' && Number.isSafeInteger(payload.stateVersion) &&
+          typeof payload.snapshotSequence === 'number' && Number.isSafeInteger(payload.snapshotSequence) &&
+          cursor.stateVersion <= payload.stateVersion && cursor.snapshotSequence <= payload.snapshotSequence) }
       }, false)
     })
     socket.on('player:recover-request', (payload: {
@@ -407,6 +434,7 @@ export function registerSocketServer(app: FastifyInstance, rooms: RoomRepository
           }
           request.approved = true
           bindPlayer(requester, room, request.playerId)
+          rememberSnapshot(requester, snapshot)
           requester.emit('player:recovery-approved', {
             id: request.id, playerId: request.playerId, reconnectToken: request.reconnectToken, nickname: request.nickname, snapshot,
           })

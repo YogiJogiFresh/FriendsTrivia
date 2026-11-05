@@ -21,7 +21,7 @@ const SLIDES = [
     eyebrow: 'Step 3',
     title: 'Lock in your answer',
     description:
-      'Choose an option, type the song, or set a price before time expires. Confirm carefully—you get one submission.',
+      'Choose an option, type the song, or set a price before time expires. Submit carefully—you get one submission.',
     callout: 'Fast correct music answers score more',
   },
   {
@@ -29,7 +29,7 @@ const SLIDES = [
     title: 'Get closest without going over',
     description:
       'For Price Is Right clues, the closest guess at or below the real price wins the most points. Overbids score zero.',
-    callout: 'Use the slider and confirm',
+    callout: 'Use the slider and submit',
   },
   {
     eyebrow: 'Step 5',

@@ -14,6 +14,8 @@ import {
 } from '../../lib/snapshot'
 import type { RawSnapshot } from '../../lib/snapshot'
 import { useConnectionStatus } from './useConnectionStatus'
+import { answerScope, hasAnswer, playerSnapshot } from '../../lib/playerState'
+import { traceEvent } from '../../lib/diagnostics'
 
 export interface PlayerRoomResult {
   game: GameState | null
@@ -34,6 +36,7 @@ export interface PlayerRoomResult {
   recovery: SeatRecovery | null
   requestRecovery: (nickname: string) => Promise<void>
   answerSubmitted: boolean
+  answerScopeKey: string | null
   submitAnswer: (answer: string | number) => Promise<void>
   submitWager: (amount: number) => Promise<void>
   submitSpecialVote: (playerId: string) => Promise<void>
@@ -82,9 +85,17 @@ export function usePlayerRoom(roomCode: string): PlayerRoomResult {
   const activePlayerIdRef = useRef<string | null>(null)
   const retryRef = useRef<() => void>(() => {})
   const connection = useConnectionStatus()
+  const latest = useRef<RawSnapshot | null>(null)
+  const receipt = useRef<RawSnapshot['ownSubmission']>(undefined)
+  const pendingAnswer = useRef(false)
+  const uncertainScope = useRef<string | null>(null)
+  const lifecycle = useRef(0)
+  const applySnapshotRef = useRef<(next: RawSnapshot) => void>(() => {})
+  const synchronizeRef = useRef<() => Promise<void>>(async () => {})
 
   useEffect(() => {
     let cancelled = false
+    const effectLifecycle = ++lifecycle.current
     setLoading(true)
     setFatalError(null)
     setNeedsNickname(false)
@@ -95,11 +106,17 @@ export function usePlayerRoom(roomCode: string): PlayerRoomResult {
     recoveryRef.current = null
     setRecovery(null)
     setAnswerReceipt(undefined)
+    latest.current = null
+    receipt.current = undefined
+    pendingAnswer.current = false
+    uncertainScope.current = null
+    setSubmitting(false)
     setReconnectError(null)
     setReconnecting(true)
 
     const socket = getSocket()
     let inFlight = false
+    let reconnectRequest: Promise<void> | undefined
     let generation = 0
     let failures = 0
     let connectionId = socket.id
@@ -107,32 +124,45 @@ export function usePlayerRoom(roomCode: string): PlayerRoomResult {
     let terminal = false
 
     function applySnapshot(next: RawSnapshot) {
-      if (!cancelled) {
-        setSnapshot(next)
-        if (next.ownSubmission) setAnswerReceipt(next.ownSubmission)
+      if (!cancelled && next.code === roomCode) {
+        const accepted = playerSnapshot(latest.current, next)
+        traceEvent(accepted === next ? 'player:snapshot' : 'player:stale-snapshot', {
+          roomGeneration: next.roomGeneration, stateVersion: next.stateVersion, snapshotSequence: next.snapshotSequence,
+          phase: next.phase,
+        })
+        latest.current = accepted
+        setSnapshot(accepted)
+        if (next.ownSubmission && hasAnswer(accepted, next.ownSubmission)) {
+          receipt.current = next.ownSubmission
+          setAnswerReceipt(next.ownSubmission)
+        }
       }
     }
+    applySnapshotRef.current = applySnapshot
 
     function connectRoom() {
-      if (cancelled || terminal || inFlight || !socket.connected) return
+      if (cancelled || terminal || !socket.connected) return
+      if (inFlight) return reconnectRequest
       clearTimeout(retryTimer)
       inFlight = true
       const attempt = generation
       const identity = getPlayerIdentity(roomCode)
+      activePlayerIdRef.current = null
       setReconnecting(true)
       const request = identity
         ? emitWithAck<RawSnapshot>('player:reconnect', {
             code: roomCode, playerId: identity.playerId, reconnectToken: identity.reconnectToken,
           })
         : emitWithAck<RawSnapshot>('room:watch', { code: roomCode })
-      void request
+      reconnectRequest = request
         .then((next) => {
           if (cancelled || attempt !== generation) return
           activePlayerIdRef.current = identity?.playerId ?? null
           setPlayerId(identity?.playerId ?? null)
           setNickname(identity?.nickname ?? null)
-          if (identity) setAnswerReceipt(next.ownSubmission)
           applySnapshot(next)
+          uncertainScope.current = null
+          setSubmitting(pendingAnswer.current)
           setNeedsNickname(!identity)
           setLoading(false)
           setReconnecting(false)
@@ -149,6 +179,8 @@ export function usePlayerRoom(roomCode: string): PlayerRoomResult {
             setPlayerId(null)
             setNickname(null)
             setAnswerReceipt(undefined)
+            receipt.current = undefined
+            latest.current = null
             setNeedsNickname(true)
             setReconnecting(false)
             retryTimer = setTimeout(connectRoom, 0)
@@ -164,8 +196,12 @@ export function usePlayerRoom(roomCode: string): PlayerRoomResult {
           }
         })
         .finally(() => {
-          if (attempt === generation) inFlight = false
+          if (attempt === generation) {
+            inFlight = false
+            reconnectRequest = undefined
+          }
         })
+      return reconnectRequest
     }
 
     function disconnected() {
@@ -173,6 +209,7 @@ export function usePlayerRoom(roomCode: string): PlayerRoomResult {
       inFlight = false
       clearTimeout(retryTimer)
       activePlayerIdRef.current = null
+      latest.current = null
       setReconnecting(true)
       if (recoveryRef.current) {
         recoveryRef.current = { ...recoveryRef.current, status: 'disconnected' }
@@ -214,6 +251,8 @@ export function usePlayerRoom(roomCode: string): PlayerRoomResult {
       savePlayerIdentity(roomCode, {
         playerId: next.playerId, reconnectToken: next.reconnectToken, nickname: next.nickname,
       })
+      latest.current = null
+      receipt.current = next.snapshot.ownSubmission
       setAnswerReceipt(next.snapshot.ownSubmission)
       activePlayerIdRef.current = next.playerId
       setPlayerId(next.playerId)
@@ -235,14 +274,50 @@ export function usePlayerRoom(roomCode: string): PlayerRoomResult {
     socket.on('player:recovery-approved', handleRecoveryApproved)
     recoveryApprovedRef.current = handleRecoveryApproved
     retryRef.current = connectRoom
+    synchronizeRef.current = async () => { await connectRoom() }
+    let checking = false
+    let lastCheck = -Infinity
+    async function checkHealth() {
+      const current = latest.current
+      if (cancelled || terminal || checking || inFlight || pendingAnswer.current || uncertainScope.current ||
+        document.visibilityState === 'hidden' || !socket.connected || !activePlayerIdRef.current || !current ||
+        performance.now() - lastCheck < 1_000) return
+      checking = true
+      lastCheck = performance.now()
+      const attempt = generation
+      try {
+        const result = await emitWithAck<{ inSync: boolean }>('player:sync', {
+          roomGeneration: current.roomGeneration, stateVersion: current.stateVersion,
+          snapshotSequence: current.snapshotSequence,
+        })
+        if (!cancelled && attempt === generation && !pendingAnswer.current && !result.inSync) await connectRoom()
+      } catch {
+        if (!cancelled && attempt === generation && !pendingAnswer.current && socket.connected) {
+          socket.disconnect()
+          socket.connect()
+        }
+      } finally { checking = false }
+    }
+    const healthTimer = setInterval(() => { void checkHealth() }, 15_000)
+    const checkVisible = () => { void checkHealth() }
+    document.addEventListener('visibilitychange', checkVisible)
+    window.addEventListener('focus', checkVisible)
+    window.addEventListener('online', checkVisible)
     if (socket.connected) connectRoom()
 
     return () => {
       cancelled = true
+      lifecycle.current = effectLifecycle + 1
       if (recoveryRef.current)
         socket.emit('player:recovery-cancel', { recoveryId: recoveryRef.current.id })
       recoveryRef.current = null
       clearTimeout(retryTimer)
+      clearInterval(healthTimer)
+      document.removeEventListener('visibilitychange', checkVisible)
+      window.removeEventListener('focus', checkVisible)
+      window.removeEventListener('online', checkVisible)
+      synchronizeRef.current = async () => {}
+      applySnapshotRef.current = () => {}
       retryRef.current = () => {}
       recoveryApprovedRef.current = () => {}
       socket.off('room:snapshot', handleSnapshot)
@@ -260,10 +335,11 @@ export function usePlayerRoom(roomCode: string): PlayerRoomResult {
     setRecovery(next)
     setJoinError(null)
     try {
+      const attempt = lifecycle.current
       const request = await emitWithAck<SeatRecovery>('player:recover-request', {
         code: roomCode, nickname: next.nickname, requestId: next.id, expectedRoomGeneration: snapshot?.roomGeneration,
       })
-      if (recoveryRef.current?.id !== next.id) return
+      if (attempt !== lifecycle.current || recoveryRef.current?.id !== next.id) return
       recoveryRef.current = request
       setRecovery(request)
       const status = await emitWithAck<SeatRecovery & { identity?: Omit<RecoveredIdentity, 'id'> }>(
@@ -285,6 +361,7 @@ export function usePlayerRoom(roomCode: string): PlayerRoomResult {
 
   const join = useCallback(
     async (nicknameInput: string, teamName?: string) => {
+      const attempt = lifecycle.current
       setJoining(true)
       setJoinError(null)
       try {
@@ -292,6 +369,7 @@ export function usePlayerRoom(roomCode: string): PlayerRoomResult {
           'player:join',
           { code: roomCode, nickname: nicknameInput, teamName },
         )
+        if (attempt !== lifecycle.current) return
         savePlayerIdentity(roomCode, {
           playerId: result.playerId,
           reconnectToken: result.reconnectToken,
@@ -300,15 +378,15 @@ export function usePlayerRoom(roomCode: string): PlayerRoomResult {
         setPlayerId(result.playerId)
         activePlayerIdRef.current = result.playerId
         setNickname(nicknameInput)
-        setSnapshot(result.snapshot)
+        applySnapshotRef.current(result.snapshot)
         setNeedsNickname(false)
         setAnswerReceipt(undefined)
         setReconnecting(false)
         setLoading(false)
       } catch (error) {
-        setJoinError(error instanceof Error ? error.message : 'Unable to join this room')
+        if (attempt === lifecycle.current) setJoinError(error instanceof Error ? error.message : 'Unable to join this room')
       } finally {
-        setJoining(false)
+        if (attempt === lifecycle.current) setJoining(false)
       }
     },
     [roomCode],
@@ -317,18 +395,44 @@ export function usePlayerRoom(roomCode: string): PlayerRoomResult {
   const submitAnswer = useCallback(
     async (answer: string | number) => {
       if (!activePlayerIdRef.current) throw new Error('Wait until your seat reconnects.')
+      if (pendingAnswer.current || uncertainScope.current || hasAnswer(latest.current, receipt.current))
+        throw new Error('Your answer is already pending or submitted.')
+      const scope = answerScope(snapshot)
+      if (!scope || scope !== answerScope(latest.current) || snapshot?.window !== latest.current?.window)
+        throw new Error('The question changed. Check the current question before submitting.')
+      const attempt = lifecycle.current
+      pendingAnswer.current = true
       setSubmitting(true)
       setSubmitError(null)
       try {
         await emitWithAck('player:answer', { answer, ...expectedRoomContext(snapshot) })
-        if (snapshot?.activeClue && snapshot.roomGeneration !== undefined)
-          setAnswerReceipt({ clueId: snapshot.activeClue.id, attempt: snapshot.attempt ?? 0,
-            window: snapshot.window ?? 0, roomGeneration: snapshot.roomGeneration })
+        if (attempt === lifecycle.current && snapshot?.activeClue && snapshot.roomGeneration !== undefined) {
+          const accepted = { clueId: snapshot.activeClue.id, attempt: snapshot.attempt ?? 0,
+            window: snapshot.window ?? 0, roomGeneration: snapshot.roomGeneration }
+          if (scope === answerScope(latest.current ?? snapshot)) {
+            receipt.current = accepted
+            setAnswerReceipt(accepted)
+          }
+        }
       } catch (error) {
+        if (attempt !== lifecycle.current) throw error
+        if (error instanceof SocketAckError && (error.code === 'timeout' || error.code === 'duplicate_answer')) {
+          uncertainScope.current = scope
+          await synchronizeRef.current()
+          if (attempt !== lifecycle.current) throw error
+          if (scope === answerScope(latest.current) && hasAnswer(latest.current, receipt.current)) return
+          if (uncertainScope.current) {
+            setReconnectError('Your answer may have been submitted. Reconnect to check before retrying.')
+            throw new Error('Checking whether your answer was submitted. Do not submit again yet.')
+          }
+        }
         setSubmitError(error instanceof Error ? error.message : 'Unable to submit your answer')
         throw error
       } finally {
-        setSubmitting(false)
+        if (attempt === lifecycle.current) {
+          pendingAnswer.current = false
+          if (!uncertainScope.current) setSubmitting(false)
+        }
       }
     },
     [snapshot],
@@ -400,9 +504,8 @@ export function usePlayerRoom(roomCode: string): PlayerRoomResult {
     retryReconnect: () => retryRef.current(),
     recovery,
     requestRecovery,
-    answerSubmitted: Boolean(answerReceipt && snapshot && answerReceipt.clueId === snapshot.activeClue?.id &&
-      answerReceipt.attempt === snapshot.attempt && answerReceipt.window === snapshot.window &&
-      answerReceipt.roomGeneration === snapshot.roomGeneration),
+    answerSubmitted: hasAnswer(snapshot, answerReceipt),
+    answerScopeKey: answerScope(snapshot),
     submitAnswer,
     submitWager,
     submitSpecialVote,

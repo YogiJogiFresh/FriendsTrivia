@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import type { Clue } from '../../data/types'
 import { Button } from '../common'
 import { FreeTextAnswer } from './FreeTextAnswer'
@@ -22,16 +22,15 @@ export interface AnswerPanelProps {
   /** True while answers are closed, the round is paused, or the connection is down. */
   disabled?: boolean
   submitted?: boolean
-  /** May reject (e.g. server ack error) — the panel then returns to the confirm step so the player can retry. */
+  /** Rejections retain the draft; success locks the answer. */
   onSubmit?: (submission: AnswerSubmission) => void | Promise<void>
 }
 
-type Phase = 'answering' | 'confirming' | 'submitted'
+type Phase = 'answering' | 'submitting' | 'submitted'
 
 /**
  * Renders the correct control for a clue's type and drives the shared
- * answer/confirm/submitted flow described in the plan: one accepted
- * submission per player, with an explicit confirmation step before it locks.
+ * single-submit flow: one accepted answer per player and clue attempt.
  */
 export function AnswerPanel({ clue, disabled = false, submitted = false, onSubmit }: AnswerPanelProps) {
   const [phase, setPhase] = useState<Phase>('answering')
@@ -39,6 +38,7 @@ export function AnswerPanel({ clue, disabled = false, submitted = false, onSubmi
   const [freeText, setFreeText] = useState('')
   const [priceValue, setPriceValue] = useState(() => (clue.type === 'price-slider' ? clue.min : 0))
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const pending = useRef(false)
 
   const hasAnswer = useMemo(() => {
     if (clue.type === 'music-multiple-choice') return selectedOptionId !== null
@@ -46,20 +46,11 @@ export function AnswerPanel({ clue, disabled = false, submitted = false, onSubmi
     return true
   }, [clue.type, selectedOptionId, freeText])
 
-  const summaryLabel = useMemo(() => {
-    if (clue.type === 'music-multiple-choice') {
-      return clue.options.find((option) => option.id === selectedOptionId)?.label ?? ''
-    }
-    if (clue.type === 'music-free-text') return freeText
-    return `${clue.unitPrefix ?? '$'}${priceValue.toLocaleString()}`
-  }, [clue, selectedOptionId, freeText, priceValue])
-
-  function handleSubmitClick() {
+  async function handleSubmitClick() {
+    if (pending.current || disabled || submitted || !hasAnswer) return
+    pending.current = true
     setSubmitError(null)
-    setPhase('confirming')
-  }
-
-  async function handleConfirm() {
+    setPhase('submitting')
     const answer: string | number =
       clue.type === 'music-multiple-choice'
         ? clue.options.find((option) => option.id === selectedOptionId)?.label ?? ''
@@ -71,46 +62,17 @@ export function AnswerPanel({ clue, disabled = false, submitted = false, onSubmi
       setPhase('submitted')
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : 'Could not submit that answer.')
-      setPhase('confirming')
-    }
+      setPhase('answering')
+    } finally { pending.current = false }
   }
 
   if (submitted || phase === 'submitted') {
     return (
-      <div className={styles.submittedState} role="status">
-        <span className={styles.submittedIcon} aria-hidden="true">
-          ✓
-        </span>
-        <span className={styles.submittedTitle}>Answer locked in!</span>
-        <span className={styles.submittedHint}>Waiting for other players…</span>
-      </div>
+      <p className={styles.submittedState} role="status">Submitted</p>
     )
   }
 
-  if (phase === 'confirming') {
-    return (
-      <div className={styles.panel}>
-        <div className={styles.confirmSummary}>
-          <span className={styles.confirmLabel}>Submit this answer?</span>
-          <span className={styles.confirmValue}>{summaryLabel || '—'}</span>
-        </div>
-        {submitError ? (
-          <p role="alert" className={styles.submitError}>
-            {submitError}
-          </p>
-        ) : null}
-        <div className={styles.confirmButtons}>
-          <Button variant="secondary" size="lg" onClick={() => setPhase('answering')}>
-            Change answer
-          </Button>
-          <Button variant="primary" size="lg" disabled={disabled} onClick={handleConfirm}>
-            Confirm
-          </Button>
-        </div>
-      </div>
-    )
-  }
-
+  const controlsDisabled = disabled || phase === 'submitting'
   return (
     <div className={styles.panel}>
       <p className={styles.prompt}>{clue.prompt}</p>
@@ -120,12 +82,12 @@ export function AnswerPanel({ clue, disabled = false, submitted = false, onSubmi
           options={clue.options}
           selectedOptionId={selectedOptionId}
           onSelect={setSelectedOptionId}
-          disabled={disabled}
+          disabled={controlsDisabled}
         />
       ) : null}
 
       {clue.type === 'music-free-text' ? (
-        <FreeTextAnswer value={freeText} onChange={setFreeText} disabled={disabled} />
+        <FreeTextAnswer value={freeText} onChange={setFreeText} disabled={controlsDisabled} />
       ) : null}
 
       {clue.type === 'price-slider' ? (
@@ -136,13 +98,14 @@ export function AnswerPanel({ clue, disabled = false, submitted = false, onSubmi
           value={priceValue}
           onChange={setPriceValue}
           unitPrefix={clue.unitPrefix}
-          disabled={disabled}
+          disabled={controlsDisabled}
         />
       ) : null}
 
+      {submitError ? <p role="alert" className={styles.submitError}>{submitError}</p> : null}
       <div className={styles.actions}>
-        <Button variant="primary" size="lg" fullWidth disabled={disabled || !hasAnswer} onClick={handleSubmitClick}>
-          Submit answer
+        <Button variant="primary" size="lg" fullWidth disabled={controlsDisabled || !hasAnswer} onClick={handleSubmitClick}>
+          {phase === 'submitting' ? 'Submitting...' : 'Submit answer'}
         </Button>
       </div>
     </div>

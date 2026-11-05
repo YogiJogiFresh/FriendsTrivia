@@ -49,6 +49,7 @@ export function PlayPage() {
     recovery,
     requestRecovery,
     answerSubmitted,
+    answerScopeKey,
     submitAnswer,
     submitWager,
     submitSpecialVote,
@@ -358,9 +359,9 @@ export function PlayPage() {
             </div>
             {currentClue.special !== 'forced_player' || game.room.forcedPlayerId === playerId ? (
               <AnswerPanel
-                key={`${currentClue.id}:${game.room.deadline ?? ''}`}
+                key={answerScopeKey}
                 clue={currentClue}
-                disabled={connection !== 'connected' || isPaused || answerSubmitted}
+                disabled={connection !== 'connected' || isPaused || answerSubmitted || submitting}
                 submitted={answerSubmitted}
                 onSubmit={handleAnswerSubmit}
               />

@@ -10,6 +10,7 @@ import { registerSocketServer } from './socket.js'
 import { createCosmosStore } from './cloud/cosmos.js'
 import { FakeCosmos } from './cloud/cosmosFake.testSupport.js'
 import { createId } from './ids.js'
+import type { CosmosRooms } from './cloud/cosmosRooms.js'
 
 const clients: Socket[] = []
 const cleanup: Array<() => Promise<void>> = []
@@ -41,7 +42,7 @@ async function fixture(cloud = false) {
   }, 4)
   const engine = new GameEngine(source, rooms, 'https://trivia.example')
   const app = Fastify()
-  registerSocketServer(app, rooms, engine, 'https://trivia.example')
+  const server = registerSocketServer(app, rooms, engine, 'https://trivia.example')
   const address = await app.listen({ host: '127.0.0.1', port: 0 })
   cleanup.push(async () => {
     engine.dispose()
@@ -62,7 +63,7 @@ async function fixture(cloud = false) {
     })
     return socket
   }
-  return { ...created, engine, rooms, client, clueId: saved.categories[0]!.clues[0]!.id }
+  return { ...created, engine, rooms, client, server, clueId: saved.categories[0]!.clues[0]!.id }
 }
 
 type Ack<T = { phase: string; stateVersion: number; receivedAt?: string }> = { ok: boolean; error?: string; code?: string; data?: T }
@@ -80,6 +81,76 @@ async function disconnected(game: Awaited<ReturnType<typeof fixture>>, playerId:
 }
 
 describe('socket persistence acknowledgements', () => {
+  it('detects lost membership and rejects unauthenticated, replaced-generation, and unowned cursors', async () => {
+    const game = await fixture()
+    const client = await game.client()
+    let snapshot: PlayerSnapshot | undefined
+    client.on('room:snapshot', next => { snapshot = next })
+    const joined = (await emit<Joined>(client, 'player:join', { code: game.room.code, nickname: 'Player' })).data!
+    await vi.waitFor(() => expect(snapshot).toBeDefined())
+    const cursor = () => ({ roomGeneration: snapshot!.roomGeneration,
+      stateVersion: snapshot!.stateVersion, snapshotSequence: snapshot!.snapshotSequence })
+    const server = game.server.sockets.sockets.get(client.id!)!
+    await server.leave(`room:${game.room.id}`)
+    expect((await emit(client, 'player:sync', cursor())).data).toEqual({ inSync: false })
+    const restored = await emit<PlayerSnapshot>(client, 'player:reconnect', {
+      code: game.room.code, playerId: joined.playerId, reconnectToken: joined.reconnectToken,
+    })
+    expect(restored.ok).toBe(true)
+    expect(server.rooms.has(`room:${game.room.id}`)).toBe(true)
+    await new Promise(resolve => setTimeout(resolve, 260))
+    expect((await emit(client, 'player:sync', cursor())).data).toEqual({ inSync: true })
+    await new Promise(resolve => setTimeout(resolve, 260))
+    expect((await emit(client, 'player:sync', { ...cursor(), roomGeneration: 'replaced' })).data).toEqual({ inSync: false })
+    await new Promise(resolve => setTimeout(resolve, 260))
+    const playerId = server.data.playerId
+    server.data.playerId = 'not-owner'
+    expect((await emit(client, 'player:sync', cursor())).data).toEqual({ inSync: false })
+    server.data.playerId = playerId
+    const anonymous = await game.client()
+    expect((await emit(anonymous, 'player:sync', cursor())).data).toEqual({ inSync: false })
+  })
+
+  it('checks 50 player cursors without SDK reads, snapshots, writes, or public private-receipt data', async () => {
+    const game = await fixture(true)
+    const players: Array<{ socket: Socket; snapshot: PlayerSnapshot }> = []
+    for (let i = 0; i < 50; i++) {
+      const socket = await game.client()
+      const joined = await emit<Joined>(socket, 'player:join', { code: game.room.code, nickname: `Player ${i}` })
+      const player = { socket, snapshot: joined.data!.snapshot }
+      socket.on('room:snapshot', next => { player.snapshot = next })
+      players.push(player)
+    }
+    await vi.waitFor(() => expect(players.every(player => player.snapshot.players.length === 50)).toBe(true))
+    await new Promise(resolve => setTimeout(resolve, 100))
+    const access = (game.rooms.store as CosmosRooms).access
+    const read = vi.spyOn(access, 'read'), query = vi.spyOn(access, 'query'), batch = vi.spyOn(access, 'batch')
+    const snapshots = vi.spyOn(game.engine, 'snapshotPair')
+    const publicSnapshot = vi.spyOn(game.engine, 'publicSnapshot'), hostSnapshot = vi.spyOn(game.engine, 'hostSnapshot')
+    const broadcast = vi.fn()
+    for (const player of players) player.socket.on('room:snapshot', broadcast)
+    const responses = await Promise.all(players.map(player => emit<{ inSync: boolean }>(player.socket, 'player:sync', {
+      roomGeneration: player.snapshot.roomGeneration, stateVersion: player.snapshot.stateVersion,
+      snapshotSequence: player.snapshot.snapshotSequence,
+    })))
+    expect(responses.every(response => response.ok && response.data?.inSync)).toBe(true)
+    await new Promise(resolve => setTimeout(resolve, 260))
+    const player = players[0]!
+    const stale = await emit<{ inSync: boolean }>(player.socket, 'player:sync', {
+      roomGeneration: player.snapshot.roomGeneration, stateVersion: player.snapshot.stateVersion, snapshotSequence: 0,
+    })
+    expect(stale.data).toEqual({ inSync: false })
+    expect(read).not.toHaveBeenCalled()
+    expect(query).not.toHaveBeenCalled()
+    expect(batch).not.toHaveBeenCalled()
+    expect(snapshots).not.toHaveBeenCalled()
+    expect(publicSnapshot).not.toHaveBeenCalled()
+    expect(hostSnapshot).not.toHaveBeenCalled()
+    expect(broadcast).not.toHaveBeenCalled()
+    expect(responses[0]!.data).toEqual({ inSync: true })
+    expect(player.snapshot).not.toHaveProperty('ownSubmission')
+  })
+
   it('builds no command snapshot and releases only a minimal committed receipt before the authoritative broadcast', async () => {
     const game = await fixture(true)
     const guest = await game.client()
