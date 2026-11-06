@@ -4,6 +4,7 @@ import {
   AnswerAcknowledgementSchema,
   DEFAULT_GAME_SETTINGS,
   GameSettingsSchema,
+  ManifestClueSchema,
   PackManifestSchema,
   RelativeContentPathSchema,
 } from './contracts.js'
@@ -47,6 +48,23 @@ describe('shared contract schemas', () => {
       startOffsetSeconds: 0,
       playbackDurationSeconds: 30,
     })
+  })
+
+  it.each(['MUSIC_MULTIPLE_CHOICE', 'MUSIC_FREE_TEXT'] as const)('allows %s questions without media', (type) => {
+    const answer = type === 'MUSIC_MULTIPLE_CHOICE'
+      ? { choices: [{ id: 'a', label: 'Answer' }, { id: 'b', label: 'Other' }], correctChoiceId: 'a' }
+      : { acceptedAnswers: ['Answer'] }
+    expect(ManifestClueSchema.safeParse({
+      key: 'text-only', type, boardValue: 100, position: 0, prompt: 'Which answer?', ...answer,
+    }).success).toBe(true)
+    const publicClue = {
+      id: 'clue-1', categoryId: 'category-1', type, boardValue: 100, prompt: 'Which answer?',
+      timerSeconds: 30, openedAtMs: null, deadlineMs: null,
+      startOffsetSeconds: 0, playbackDurationSeconds: 30,
+      ...(type === 'MUSIC_MULTIPLE_CHOICE' ? { choices: answer.choices } : {}),
+    }
+    expect(ActivePublicClueSchema.safeParse(publicClue).success).toBe(true)
+    expect(ActivePublicClueSchema.safeParse({ ...publicClue, mediaUrl: 'invalid' }).success).toBe(false)
   })
 
   it('rejects a multiple-choice answer key that is not an option', () => {

@@ -861,7 +861,7 @@ export function HostEditorPage() {
                           {clue.type !== 'price_slider' ? (
                             <div className={styles.field}>
                               <label className={styles.statusLabel} htmlFor={`clue-media-${clue.key}`}>
-                                Song
+                                Song (optional)
                               </label>
                               <select
                                 id={`clue-media-${clue.key}`}

@@ -189,7 +189,7 @@ const manifestClueCommonShape = {
 } as const
 
 const musicShape = {
-  media: MusicMediaSchema,
+  media: MusicMediaSchema.optional(),
   startOffsetSeconds: z.number().finite().min(0).max(86_400).default(0),
   playbackDurationSeconds: z.number().finite().min(1).max(300).default(30),
 } as const
@@ -589,7 +589,7 @@ export const ActivePublicClueSchema = z.discriminatedUnion('type', [
       ...activeClueCommonShape,
       type: z.literal('MUSIC_MULTIPLE_CHOICE'),
       choices: z.array(ChoiceSchema).min(2).max(8),
-      mediaUrl: z.string().url(),
+      mediaUrl: z.string().url().optional(),
       revealMediaUrl: z.string().url().optional(),
       startOffsetSeconds: z.number().finite().nonnegative(),
       playbackDurationSeconds: z.number().finite().positive(),
@@ -599,7 +599,7 @@ export const ActivePublicClueSchema = z.discriminatedUnion('type', [
     .object({
       ...activeClueCommonShape,
       type: z.literal('MUSIC_FREE_TEXT'),
-      mediaUrl: z.string().url(),
+      mediaUrl: z.string().url().optional(),
       revealMediaUrl: z.string().url().optional(),
       startOffsetSeconds: z.number().finite().nonnegative(),
       playbackDurationSeconds: z.number().finite().positive(),

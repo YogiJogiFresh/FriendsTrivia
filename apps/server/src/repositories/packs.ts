@@ -93,9 +93,6 @@ export function validatePack(input: {
         throw new Error('The question GIF must be a secure direct GIF link')
       }
       if (clue.type.startsWith('music_')) {
-        if (input.status === 'ready' && !clue.mediaAssetId) {
-          throw new Error('Every music clue in a ready pack needs an uploaded song')
-        }
         if (clue.type === 'music_multiple_choice') {
           const choices = Array.isArray(config.choices)
             ? config.choices.filter((choice): choice is string => typeof choice === 'string' && Boolean(choice.trim()))
