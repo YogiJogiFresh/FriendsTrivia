@@ -26,6 +26,7 @@ import type {
   GifProviderStatus,
 } from '../lib/apiClient'
 import { changeMultipleChoice, findCorrectChoice, hasCorrectChoice } from './multipleChoiceEditor'
+import { freeTextConfigForSave } from './freeTextEditor'
 import { AudioSnippetUploader } from '../components/host/AudioSnippetUploader'
 import type { AudioSnippetUploaderHandle } from '../components/host/AudioSnippetUploader'
 import { PackBoardPreview } from '../components/host/PackBoardPreview'
@@ -140,7 +141,9 @@ function packInputFromState(pack: EditablePack): PackInput {
           ...clue.config,
           correctAnswer: clue.selectedChoiceIndex === null ? '' : clue.config.choices?.[clue.selectedChoiceIndex] ?? '',
         }
-        : clue.config,
+        : clue.type === 'music_free_text'
+          ? freeTextConfigForSave(clue.config)
+          : clue.config,
     })),
   }))
   return {
@@ -988,9 +991,7 @@ export function HostEditorPage() {
                                     config: {
                                       ...clue.config,
                                       acceptedAnswers: event.target.value
-                                        .split('\n')
-                                        .map((line) => line.trim())
-                                        .filter(Boolean),
+                                        .split('\n'),
                                     },
                                   })
                                 }

@@ -41,7 +41,7 @@ export function GifPicker({
   onProvidersChange,
   onChange,
 }: GifPickerProps) {
-  const [provider, setProvider] = useState<GifSource>(stage === 'question' ? 'url' : 'giphy')
+  const [provider, setProvider] = useState<GifSource>('url')
   const [apiKey, setApiKey] = useState('')
   const [directUrl, setDirectUrl] = useState('')
   const [query, setQuery] = useState('')
