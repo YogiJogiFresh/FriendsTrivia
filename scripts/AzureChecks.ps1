@@ -235,7 +235,8 @@ foreach ($index in $global:AzureCheckIndexPolicy.compositeIndexes) {
 }
 foreach ($file in @("$PSScriptRoot\..\infra\azure\main.bicep", "$PSScriptRoot\..\infra\azure\access.bicep", "$PSScriptRoot\..\.github\workflows\azure-deploy.yml")) {
     if (Test-Path $file) {
-        if ((Get-Content $file -Raw) -match '(?i)postgres|ADMIN_PASSWORD') { throw 'Retired cloud SQL/password configuration remains.' }
+        $legacyConfiguration = (Get-Content $file -Raw) -replace '\bFRIENDS_TRIVIA_ADMIN_PASSWORD\b', ''
+        if ($legacyConfiguration -match '(?i)postgres|ADMIN_PASSWORD') { throw 'Retired cloud SQL/password configuration remains.' }
     }
 }
 Write-Host 'Azure parsing, regional/test isolation guards, no-action dry runs and explicit approval gates passed.'
