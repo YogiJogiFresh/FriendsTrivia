@@ -33,8 +33,8 @@ export function adminCredentials(mode: 'local' | 'cloud', environment: NodeJS.Pr
   const password = environment.FRIENDS_TRIVIA_ADMIN_PASSWORD
   const key = environment.FRIENDS_TRIVIA_ADMIN_SESSION_KEY
   if (!password || password.startsWith('@Microsoft.KeyVault(') ||
-    Buffer.byteLength(password) < 16 || Buffer.byteLength(password) > 1024)
-    throw new Error('FRIENDS_TRIVIA_ADMIN_PASSWORD must resolve to a passphrase of 16-1024 bytes')
+    Buffer.byteLength(password) > 1024)
+    throw new Error('FRIENDS_TRIVIA_ADMIN_PASSWORD must resolve to a non-empty passphrase of at most 1024 bytes')
   if (!key || !/^[a-fA-F0-9]{64}$/.test(key))
     throw new Error('FRIENDS_TRIVIA_ADMIN_SESSION_KEY must resolve to a 32-byte hexadecimal key')
   return { password, key: Buffer.from(key, 'hex') }

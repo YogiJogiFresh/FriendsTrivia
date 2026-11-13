@@ -289,7 +289,7 @@ the template. In cloud mode configure:
 | `COSMOS_GAMES_CONTAINER`, `COSMOS_LIBRARY_CONTAINER` | `games`, `library` |
 | `AZURE_CLIENT_ID` | runtime managed identity client ID |
 | `AZURE_STORAGE_ACCOUNT_URL`, `AZURE_STORAGE_CONTAINER` | actual Blob endpoint, `songs` |
-| `FRIENDS_TRIVIA_ADMIN_PASSWORD` | resolved admin passphrase, 16-1024 UTF-8 bytes; use a Key Vault reference |
+| `FRIENDS_TRIVIA_ADMIN_PASSWORD` | resolved non-empty admin passphrase, at most 1024 UTF-8 bytes; use a Key Vault reference |
 | `FRIENDS_TRIVIA_ADMIN_SESSION_KEY` | separate random 32-byte key encoded as 64 hexadecimal characters; use another Key Vault reference |
 
 #### Account-free admin unlock and Key Vault
@@ -303,8 +303,10 @@ The operator-selected password reference is:
 This URI is a reference, not the password. Do not fetch or paste the secret into chat,
 source, URLs, scripts, command-line arguments, browser storage, or build logs. App Service
 resolves it into the server setting; the application does not call Key Vault on requests.
-The existing secret must contain the actual passphrase, not a password hash. The server
-uses bounded asynchronous scrypt verification and limits unlock attempts before hashing.
+The existing secret must contain the actual typeable passphrase, not a password hash or
+hexadecimal key. Shorter passwords are accepted, but prefer a long memorable passphrase
+because short passwords are easier to guess. The server uses bounded asynchronous scrypt
+verification and limits unlock attempts before hashing.
 Missing, malformed, or unresolved cloud credentials stop startup before opening storage.
 There is no default password or public initial-setup endpoint.
 

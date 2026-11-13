@@ -46,10 +46,24 @@ describe('cloud admin gate', () => {
   it('fails closed without resolved credentials, and does not require credentials locally', () => {
     expect(adminCredentials('local', {})).toBeUndefined()
     expect(() => adminCredentials('cloud', {})).toThrow('FRIENDS_TRIVIA_ADMIN_PASSWORD')
+    for (const value of ['', 'x'.repeat(1025), '\u00e9'.repeat(513)]) {
+      expect(() => adminCredentials('cloud', { ...environment, FRIENDS_TRIVIA_ADMIN_PASSWORD: value }))
+        .toThrow('FRIENDS_TRIVIA_ADMIN_PASSWORD')
+    }
     expect(() => adminCredentials('cloud', { ...environment, FRIENDS_TRIVIA_ADMIN_PASSWORD: '@Microsoft.KeyVault(SecretUri=unresolved)' }))
       .toThrow('FRIENDS_TRIVIA_ADMIN_PASSWORD')
     expect(() => adminCredentials('cloud', { ...environment, FRIENDS_TRIVIA_ADMIN_SESSION_KEY: '@Microsoft.KeyVault(unresolved)' }))
       .toThrow('FRIENDS_TRIVIA_ADMIN_SESSION_KEY')
+  })
+
+  it.each(['x', 'short-test'])('unlocks using a short plaintext password (%s)', async (value) => {
+    const { app, unlock } = await fixture(false, { ...environment, FRIENDS_TRIVIA_ADMIN_PASSWORD: value })
+    const incorrect = await app.inject({
+      method: 'POST', url: '/api/admin/unlock', headers: { origin }, payload: { password: `${value}-wrong` },
+    })
+    expect(incorrect.statusCode).toBe(401)
+    const cookie = await unlock()
+    expect((await app.inject({ url: '/api/packs', headers: { cookie } })).statusCode).toBe(200)
   })
 
   it('gates reads, HEAD, exports, imports and mutations before handlers or JSON parsing', async () => {
