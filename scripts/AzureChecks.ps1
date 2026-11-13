@@ -85,7 +85,9 @@ function az {
         default { throw "Unexpected Azure command: $args" }
     }
 }
-& "$PSScriptRoot\AzureSetup.ps1" -WhatIf -NotifySubscriptionOwners -IncludeApplication
+$dummySessionUri = 'https://dummy.vault.azure.net/secrets/session/0123456789abcdef0123456789abcdef'
+Assert-Rejected { & "$PSScriptRoot\AzureSetup.ps1" -WhatIf -NotifySubscriptionOwners -IncludeApplication }
+& "$PSScriptRoot\AzureSetup.ps1" -WhatIf -NotifySubscriptionOwners -IncludeApplication -AdminSessionKeySecretUri $dummySessionUri
 if (-not @($global:AzureCheckCalls | Where-Object { $_ -match 'deployment group validate .*--validation-level Provider' }).Count -or
     -not @($global:AzureCheckCalls | Where-Object { $_ -match 'deployment group what-if' }).Count -or
     @($global:AzureCheckCalls | Where-Object { $_ -match ' group create|settings set|role.*create' }).Count) {
@@ -93,7 +95,7 @@ if (-not @($global:AzureCheckCalls | Where-Object { $_ -match 'deployment group 
 }
 $global:AzureCheckCalls.Clear()
 $global:AzureCheckFailValidation = $true
-Assert-Rejected { & "$PSScriptRoot\AzureSetup.ps1" -Provision -NotifySubscriptionOwners -IncludeApplication -ResourceCostApproved -IdentitySetupApproved -WhatIfReviewed }
+Assert-Rejected { & "$PSScriptRoot\AzureSetup.ps1" -Provision -NotifySubscriptionOwners -IncludeApplication -AdminSessionKeySecretUri $dummySessionUri -ResourceCostApproved -IdentitySetupApproved -WhatIfReviewed }
 if (@($global:AzureCheckCalls | Where-Object { $_ -match 'deployment group (create|what-if)' }).Count) { throw 'Provider/quota failure must block creation and further preview.' }
 $global:AzureVerifyBrokenPartition = $false
 $global:AzureVerifyBrokenIndex = $false

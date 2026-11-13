@@ -30,6 +30,7 @@ jobs:
         run: |
           az bicep build --file infra/azure/main.bicep --stdout >/dev/null
           az bicep build --file infra/azure/access.bicep --stdout >/dev/null
+          az bicep build --file infra/azure/admin-access.bicep --stdout >/dev/null
 
   application:
     runs-on: ubuntu-24.04

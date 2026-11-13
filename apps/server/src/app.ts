@@ -8,6 +8,7 @@ import staticPlugin from '@fastify/static'
 import Fastify from 'fastify'
 
 import { config } from './config.js'
+import { adminCredentials, registerAdminAuth } from './adminAuth.js'
 import { audioTypeForFile, ensureContentDirectories, resolveContentPath } from './content.js'
 import { openDomainStore } from './domainStore.js'
 import { GameEngine } from './game/engine.js'
@@ -28,10 +29,13 @@ import { createMediaStorage } from './storage/media.js'
 import { recoverMediaOperations } from './storage/operations.js'
 
 export async function buildApp() {
+  const credentials = adminCredentials(config.mode, process.env)
   if (config.mode === 'local') ensureContentDirectories(config.contentRoot)
   const database = await openDomainStore(config)
   const app = Fastify({
-    logger: true,
+    logger: {
+      redact: ['req.headers.cookie', 'req.headers.authorization', 'req.body.password', 'res.headers["set-cookie"]'],
+    },
     bodyLimit: 2 * 1024 * 1024,
     trustProxy: config.mode === 'cloud' ? CLOUD_PROXY_RANGES : false,
   })
@@ -58,6 +62,7 @@ export async function buildApp() {
     })
     await app.register(rateLimit, { max: 300, timeWindow: '1 minute' })
     registerPublicAccess(app, config.publicUrl, config.mode)
+    const adminAuth = await registerAdminAuth(app, credentials, config.publicUrl)
     await app.register(multipart)
 
     const packs = new PackRepository(database)
@@ -108,7 +113,7 @@ export async function buildApp() {
       () => joinBaseUrl,
     )
     await registerHistoryRoutes(app, database)
-    registerSocketServer(app, rooms, engine, config.publicUrl)
+    registerSocketServer(app, rooms, engine, config.publicUrl, adminAuth)
 
     const bootId = createId()
     app.get('/api/health', async (_request, reply) => {

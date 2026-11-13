@@ -256,11 +256,17 @@ private **container access**, not a provisioned private endpoint/VNet architectu
 
 ### Public application and configuration
 
-**No sign-in, shared password or Easy Auth.** Anyone can create games and read/edit/delete
-the shared library, media and history, including answers. This can disrupt games or erase
-content. Creating a room automatically retains its creator control token; knowing the room
-code does not authorize host commands or host-only snapshots. Rate/input/storage limits are
-not authentication. Serve only media you have permission to share.
+**Cloud hosting and pack APIs require the shared admin passphrase; players and Display
+remain password-free.** There are no accounts or Easy Auth. Local/desktop hosting retains
+its password-free behavior. Creating a room also retains a separate creator control token;
+the admin unlock does not replace that token or transfer an existing room to another device.
+
+The cloud gate covers pack list/detail/create/edit/delete, bundle import/export, room
+creation, host-session/end HTTP calls, host socket commands/recovery decisions, and private
+host updates. **Media management/streaming, GIF provider configuration/search, and history
+APIs remain public, including their existing mutation capabilities.** They can still expose
+information or erase content; this is not whole-application authentication. Serve only
+media you have permission to share.
 
 Browser mutations and WebSocket connections are checked against the application origin;
 local hosting also accepts its actual local origin when `PUBLIC_URL` advertises a tunnel.
@@ -283,6 +289,78 @@ the template. In cloud mode configure:
 | `COSMOS_GAMES_CONTAINER`, `COSMOS_LIBRARY_CONTAINER` | `games`, `library` |
 | `AZURE_CLIENT_ID` | runtime managed identity client ID |
 | `AZURE_STORAGE_ACCOUNT_URL`, `AZURE_STORAGE_CONTAINER` | actual Blob endpoint, `songs` |
+| `FRIENDS_TRIVIA_ADMIN_PASSWORD` | resolved admin passphrase, 16-1024 UTF-8 bytes; use a Key Vault reference |
+| `FRIENDS_TRIVIA_ADMIN_SESSION_KEY` | separate random 32-byte key encoded as 64 hexadecimal characters; use another Key Vault reference |
+
+#### Account-free admin unlock and Key Vault
+
+The operator-selected password reference is:
+
+```text
+@Microsoft.KeyVault(SecretUri=https://kai-home-apps-kv.vault.azure.net/secrets/friendTriviaAdminPassword/6141e7dbdda842eabb086dd8e03cfde9)
+```
+
+This URI is a reference, not the password. Do not fetch or paste the secret into chat,
+source, URLs, scripts, command-line arguments, browser storage, or build logs. App Service
+resolves it into the server setting; the application does not call Key Vault on requests.
+The existing secret must contain the actual passphrase, not a password hash. The server
+uses bounded asynchronous scrypt verification and limits unlock attempts before hashing.
+Missing, malformed, or unresolved cloud credentials stop startup before opening storage.
+There is no default password or public initial-setup endpoint.
+
+Reuse `kai-home-apps-KV` in resource group `Common`, not a new vault. The App Service
+user-assigned `friends-trivia-runtime` identity needs secret-read permission on **only**
+`friendTriviaAdminPassword` and the separate session-key secret (suggested name
+`friendTriviaAdminSessionKey`). Set the site's `keyVaultReferenceIdentity` to that identity's
+full Azure resource ID; `AZURE_CLIENT_ID` alone does not configure reference resolution.
+`infra\azure\admin-access.bicep` declares the two secret-scoped Key Vault Secrets User grants
+for an **existing RBAC-enabled vault**. Review its what-if in `Common` and obtain explicit
+IAM approval before deploying it. Never migrate the shared vault's access model, grant
+resource-group/vault-wide access to unrelated secrets, or grant production-vault access to
+the tester. Vault firewall/private-endpoint reachability must also be confirmed separately.
+
+The owner provisions the separate key privately. On an approved operator workstation with
+PowerShell 7 and `Az.KeyVault` already available, the following creates a new key version
+without printing the key or passing it through process arguments. It **writes a vault
+secret** and must only be run after explicit provisioning approval, with the intended Azure
+context selected and diagnostic/transcript logging disabled:
+
+```powershell
+$key = [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
+$value = ConvertTo-SecureString $key -AsPlainText -Force
+$secret = Set-AzKeyVaultSecret -VaultName 'kai-home-apps-KV' -Name 'friendTriviaAdminSessionKey' -SecretValue $value
+$secret.Id # Version-pinned reference only; never output $key or the secret value.
+Remove-Variable key, value, secret
+```
+
+Configure `FRIENDS_TRIVIA_ADMIN_SESSION_KEY` with
+`@Microsoft.KeyVault(SecretUri=<the returned version-pinned URI>)`. Do not reuse the
+passphrase as the session key. `AzureSetup.ps1 -IncludeApplication` accepts
+`-AdminPasswordSecretUri` (defaulting to the selected reference) and requires
+`-AdminSessionKeySecretUri`; pass those same URIs on future infrastructure deployments so
+settings are not removed. The template does not create secrets or grant vault access.
+
+The unlock form accepts paste and password managers. A host-only HttpOnly, Secure,
+SameSite=Strict cookie unlocks a browser for **seven days from login**, without sliding
+renewal. Auth/private pack responses are not cacheable. Host tools offer **Lock host tools**;
+expiry or logout hides the still-mounted editor so unsaved drafts survive re-unlock.
+Drafts remain in browser memory and are still lost on reload/navigation. Re-unlock obtains
+fresh host state with the room token and never automatically replays mutations.
+
+Logout clears this browser's cookie and stops its existing private host connections.
+Same-browser host tabs coordinate access changes. This is a stateless cookie: a separately
+copied cookie is a bearer credential and remains valid until expiry or global rotation;
+there is no per-device registry/revocation. Rotating either the passphrase or session key
+invalidates old unlocks **once the new configuration is active**. Version-pinned references
+require an explicit approved reference update/restart; merely creating a new vault version
+does not rotate the app. Versionless references can be cached by App Service for 24 hours.
+
+Provision/confirm both references before deploying the auth-required build. Settings
+updates and deployment can restart production, so confirm live games are closed first.
+Preserve the existing exact-SHA checks and protected release approvals. Rolling back to a
+pre-auth build removes this protection and does not undo unauthorized writes or disclosure.
+See [App Service Key Vault references](https://learn.microsoft.com/en-us/azure/app-service/app-service-key-vault-references)
+for reference resolution and managed-identity configuration.
 
 Runtime uses managed identity and validates existing resources; it does not create them or
 silently fall back to SQLite. Ordinary local/desktop mode keeps SQLite/filesystem storage,

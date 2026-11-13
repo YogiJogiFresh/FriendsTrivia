@@ -42,6 +42,8 @@ try {
   assert.equal(healthBody.status, 'ok')
   assert.match(healthBody.bootId, /^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$/)
   assert.equal(health.headers.get('cache-control'), 'no-store')
+  const adminStatus = await fetch(`${origin}/api/admin/session`)
+  assert.deepEqual(await adminStatus.json(), { enabled: false, unlocked: true, expiresAt: null })
   assert.equal((await (await fetch(`${origin}/api/health`)).json()).bootId, healthBody.bootId)
   for (const route of ['/', '/host', '/history']) {
     const response = await fetch(`${origin}${route}`)

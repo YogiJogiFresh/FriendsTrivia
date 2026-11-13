@@ -7,6 +7,8 @@ param(
     [string]$BudgetEmail = $env:AZURE_BUDGET_EMAIL,
     [switch]$NotifySubscriptionOwners,
     [switch]$IncludeApplication,
+    [string]$AdminPasswordSecretUri = 'https://kai-home-apps-kv.vault.azure.net/secrets/friendTriviaAdminPassword/6141e7dbdda842eabb086dd8e03cfde9',
+    [string]$AdminSessionKeySecretUri = '',
     [switch]$WhatIf,
     [switch]$Provision,
     [switch]$ResourceCostApproved,
@@ -24,6 +26,13 @@ if (-not $WhatIf -and -not $Provision) {
 if ($WhatIf -and $Provision) { throw 'Choose preview or provisioning, not both.' }
 if ($Provision -and (-not $ResourceCostApproved -or -not $IdentitySetupApproved -or -not $WhatIfReviewed)) {
     throw 'Provisioning requires separately approved revised costs, identity/federation creation and reviewed what-if.'
+}
+if ($IncludeApplication) {
+    foreach ($uri in @($AdminPasswordSecretUri, $AdminSessionKeySecretUri)) {
+        if ($uri -notmatch '^https://[a-zA-Z0-9-]+\.vault\.azure\.net/secrets/[a-zA-Z0-9-]+/[a-fA-F0-9]{32}$') {
+            throw 'Application setup requires version-pinned admin password and session-key secret URIs, never secret values.'
+        }
+    }
 }
 if ((-not $BudgetEmail -and -not $NotifySubscriptionOwners) -or
     ($BudgetEmail -and $BudgetEmail -notmatch '^[^@\s]+@[^@\s]+\.[^@\s]+$')) {
@@ -54,6 +63,7 @@ if (@($priorDates).Count -gt 0 -and $priorDates[0].start -and $priorDates[0].end
 $arguments = @('--subscription', $SubscriptionId, '--resource-group', $ResourceGroup, '--name', 'friends-trivia',
     '--template-file', "$root\infra\azure\main.bicep", '--parameters', "location=$Location",
     "includeApplication=$($IncludeApplication.IsPresent.ToString().ToLowerInvariant())",
+    "adminPasswordSecretUri=$AdminPasswordSecretUri", "adminSessionKeySecretUri=$AdminSessionKeySecretUri",
     "notifySubscriptionOwners=$($NotifySubscriptionOwners.IsPresent.ToString().ToLowerInvariant())",
     "budgetAmount=$BudgetAmount", "budgetEmail=$BudgetEmail", "budgetStartDate=$start", "budgetEndDate=$end")
 # Provider-level ARM validation checks policy, permissions and resource/SKU quota before any creation.

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ServerPackSummary } from '../../lib/apiClient'
 import { listPacks } from '../../lib/apiClient'
+import { ADMIN_UNLOCKED } from '../../lib/adminAuth'
 
 export interface PacksResult {
   data: ServerPackSummary[] | null
@@ -36,6 +37,11 @@ export function usePacks(includeArchived = false): PacksResult {
   }, [includeArchived, reloadToken])
 
   const refetch = useCallback(() => setReloadToken((token) => token + 1), [])
+
+  useEffect(() => {
+    window.addEventListener(ADMIN_UNLOCKED, refetch)
+    return () => window.removeEventListener(ADMIN_UNLOCKED, refetch)
+  }, [refetch])
 
   return { data, loading, error, refetch }
 }

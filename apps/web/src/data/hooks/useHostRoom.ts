@@ -16,6 +16,7 @@ import type { RawSnapshot } from '../../lib/snapshot'
 import { useConnectionStatus } from './useConnectionStatus'
 import { traceEvent } from '../../lib/diagnostics'
 import { commandObserved, type CommandReceipt } from '../../lib/hostCommands'
+import { ADMIN_LOCKED, ADMIN_UNLOCKED, notifyAdminLocked } from '../../lib/adminAuth'
 
 export interface HostRoomResult {
   game: GameState | null
@@ -135,10 +136,30 @@ export function useHostRoom(roomCode: string): HostRoomResult {
       connecting = false
       connectAsHost()
     }
+    function adminLocked() {
+      generation++
+      connecting = false
+      needsSync.current = true
+      synchronize.current = async () => { throw new Error('Unlock host tools and wait for the room to reconnect.') }
+      inFlight.current?.reject?.(new Error('Host tools locked. Check the current state after unlocking before retrying.'))
+      if (!cancelled) {
+        setRecoveryRequests([])
+        setError('Unlock host tools to reconnect. Your room token is unchanged.')
+      }
+    }
+    function adminUnlocked() {
+      if (cancelled) return
+      needsSync.current = true
+      socket.disconnect()
+      socket.connect()
+    }
     socket.on('host:snapshot', handleSnapshot)
     socket.on('host:recovery-requests', handleRequests)
     socket.on('connect', connected)
     socket.on('disconnect', disconnected)
+    socket.on('admin:locked', notifyAdminLocked)
+    window.addEventListener(ADMIN_LOCKED, adminLocked)
+    window.addEventListener(ADMIN_UNLOCKED, adminUnlocked)
     if (socket.connected) connectAsHost()
 
     return () => {
@@ -153,6 +174,9 @@ export function useHostRoom(roomCode: string): HostRoomResult {
       socket.off('connect', connected)
       socket.off('host:recovery-requests', handleRequests)
       socket.off('disconnect', disconnected)
+      socket.off('admin:locked', notifyAdminLocked)
+      window.removeEventListener(ADMIN_LOCKED, adminLocked)
+      window.removeEventListener(ADMIN_UNLOCKED, adminUnlocked)
     }
   }, [roomCode, hostToken])
 

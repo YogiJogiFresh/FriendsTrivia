@@ -7,6 +7,10 @@ param humanOwner string = 'YogiJogiFresh'
 param repository string = 'YogiJogiFresh@12243528/FriendsTrivia@1362058355'
 @description('False provisions the isolated data/test target before the application is ready.')
 param includeApplication bool = false
+@description('Version-pinned admin password secret URI; contains no secret value.')
+param adminPasswordSecretUri string = 'https://kai-home-apps-kv.vault.azure.net/secrets/friendTriviaAdminPassword/6141e7dbdda842eabb086dd8e03cfde9'
+@description('Version-pinned URI of a separate 32-byte hexadecimal session key secret.')
+param adminSessionKeySecretUri string = ''
 @minValue(40)
 @maxValue(40)
 param budgetAmount int = 40
@@ -186,6 +190,7 @@ resource app 'Microsoft.Web/sites@2023-12-01' = if (includeApplication) {
   identity: { type: 'UserAssigned', userAssignedIdentities: { '${identities[0].id}': {} } }
   properties: {
     serverFarmId: plan!.id
+    keyVaultReferenceIdentity: identities[0].id
     httpsOnly: true
     clientAffinityEnabled: false
     siteConfig: {
@@ -210,6 +215,8 @@ resource app 'Microsoft.Web/sites@2023-12-01' = if (includeApplication) {
         { name: 'COSMOS_LIBRARY_CONTAINER', value: 'library' }
         { name: 'AZURE_STORAGE_ACCOUNT_URL', value: storage.properties.primaryEndpoints.blob }
         { name: 'AZURE_STORAGE_CONTAINER', value: songs.name }
+        { name: 'FRIENDS_TRIVIA_ADMIN_PASSWORD', value: empty(adminPasswordSecretUri) ? '' : '@Microsoft.KeyVault(SecretUri=${adminPasswordSecretUri})' }
+        { name: 'FRIENDS_TRIVIA_ADMIN_SESSION_KEY', value: empty(adminSessionKeySecretUri) ? '' : '@Microsoft.KeyVault(SecretUri=${adminSessionKeySecretUri})' }
         { name: 'SCM_DO_BUILD_DURING_DEPLOYMENT', value: 'false' }
         { name: 'WEBSITE_HEALTHCHECK_MAXPINGFAILURES', value: '3' }
       ]
@@ -283,6 +290,8 @@ output productionEnvironment object = {
   AZURE_STORAGE_CONTAINER: songs.name
   AZURE_CLIENT_ID: identities[0].properties.clientId
   PUBLIC_URL: includeApplication ? 'https://${app!.properties.defaultHostName}' : ''
+  FRIENDS_TRIVIA_ADMIN_PASSWORD: empty(adminPasswordSecretUri) ? '' : '@Microsoft.KeyVault(SecretUri=${adminPasswordSecretUri})'
+  FRIENDS_TRIVIA_ADMIN_SESSION_KEY: empty(adminSessionKeySecretUri) ? '' : '@Microsoft.KeyVault(SecretUri=${adminSessionKeySecretUri})'
 }
 output testEnvironment object = {
   FRIENDS_TRIVIA_MODE: 'cloud'

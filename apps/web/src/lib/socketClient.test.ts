@@ -10,6 +10,7 @@ vi.mock('socket.io-client', () => ({
 }))
 
 import { emitWithAck, SocketAckError } from './socketClient'
+import { ADMIN_LOCKED } from './adminAuth'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -24,6 +25,19 @@ function acknowledge() {
 }
 
 describe('socket mutation request IDs', () => {
+  it('signals an expired admin unlock without replaying a host command', async () => {
+    const target = Object.assign(new EventTarget(), { location: { search: '' } })
+    const locked = vi.fn()
+    target.addEventListener(ADMIN_LOCKED, locked)
+    vi.stubGlobal('window', target)
+    client.timeout.mockReturnValue(client)
+    client.emit.mockImplementation((_event, _payload, callback) => callback(null, {
+      ok: false, error: 'Unlock host tools to continue', code: 'admin_auth_required',
+    }))
+    await expect(emitWithAck('host:command', { command: 'start' })).rejects.toMatchObject({ code: 'admin_auth_required' })
+    expect(locked).toHaveBeenCalledOnce()
+    expect(client.emit).toHaveBeenCalledOnce()
+  })
   it('keeps server failure codes and distinguishes transport timeouts from uncoded errors', async () => {
     client.timeout.mockReturnValue(client)
     client.emit.mockImplementation((_event, _payload, callback) => callback(null, {

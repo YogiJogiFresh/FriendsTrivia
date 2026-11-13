@@ -11,6 +11,7 @@ import { createCosmosStore } from './cloud/cosmos.js'
 import { FakeCosmos } from './cloud/cosmosFake.testSupport.js'
 import { createId } from './ids.js'
 import type { CosmosRooms } from './cloud/cosmosRooms.js'
+import { adminCredentials, registerAdminAuth } from './adminAuth.js'
 
 const clients: Socket[] = []
 const cleanup: Array<() => Promise<void>> = []
@@ -21,7 +22,7 @@ afterEach(async () => {
   vi.restoreAllMocks()
 })
 
-async function fixture(cloud = false) {
+async function fixture(cloud = false, admin = false) {
   const database = openDatabase(':memory:')
   const source = cloud ? await createCosmosStore(new FakeCosmos(), new FakeCosmos()) : database
   const packs = new PackRepository(source)
@@ -42,7 +43,10 @@ async function fixture(cloud = false) {
   }, 4)
   const engine = new GameEngine(source, rooms, 'https://trivia.example')
   const app = Fastify()
-  const server = registerSocketServer(app, rooms, engine, 'https://trivia.example')
+  const auth = admin ? await registerAdminAuth(app, adminCredentials('cloud', {
+    FRIENDS_TRIVIA_ADMIN_PASSWORD: 'test-only admin passphrase', FRIENDS_TRIVIA_ADMIN_SESSION_KEY: '12'.repeat(32),
+  }), 'https://trivia.example') : undefined
+  const server = registerSocketServer(app, rooms, engine, 'https://trivia.example', auth)
   const address = await app.listen({ host: '127.0.0.1', port: 0 })
   cleanup.push(async () => {
     engine.dispose()
@@ -51,10 +55,10 @@ async function fixture(cloud = false) {
     if (cloud) await (source as Awaited<ReturnType<typeof createCosmosStore>>).close()
     database.close()
   })
-  async function client(origin = 'https://trivia.example') {
+  async function client(origin = 'https://trivia.example', cookie?: string) {
     const socket = io(address, {
       transports: ['websocket'], forceNew: true,
-      extraHeaders: { Origin: origin },
+      extraHeaders: { Origin: origin, ...(cookie ? { Cookie: cookie } : {}) },
     })
     clients.push(socket)
     await new Promise<void>((resolve, reject) => {
@@ -63,7 +67,15 @@ async function fixture(cloud = false) {
     })
     return socket
   }
-  return { ...created, engine, rooms, client, server, clueId: saved.categories[0]!.clues[0]!.id }
+  async function unlock() {
+    const response = await app.inject({
+      method: 'POST', url: '/api/admin/unlock', headers: { origin: 'https://trivia.example' },
+      payload: { password: 'test-only admin passphrase' },
+    })
+    expect(response.statusCode).toBe(200)
+    return String(response.headers['set-cookie']).split(';')[0]!
+  }
+  return { ...created, app, auth, unlock, engine, rooms, client, server, clueId: saved.categories[0]!.clues[0]!.id }
 }
 
 type Ack<T = { phase: string; stateVersion: number; receivedAt?: string }> = { ok: boolean; error?: string; code?: string; data?: T }
@@ -81,6 +93,76 @@ async function disconnected(game: Awaited<ReturnType<typeof fixture>>, playerId:
 }
 
 describe('socket persistence acknowledgements', () => {
+  it('requires both admin unlock and room token while public watching and joining remain available', async () => {
+    const game = await fixture(false, true)
+    const guest = await game.client()
+    expect(await emit(guest, 'host:connect', { code: game.room.code, hostToken: game.hostToken }))
+      .toMatchObject({ ok: false, code: 'admin_auth_required' })
+    expect((await emit(guest, 'room:watch', { code: game.room.code })).ok).toBe(true)
+    expect((await emit(guest, 'player:join', { code: game.room.code, nickname: 'Player' })).ok).toBe(true)
+    const cookie = await game.unlock()
+    const host = await game.client('https://trivia.example', cookie)
+    expect((await emit(host, 'host:connect', { code: game.room.code, hostToken: 'invalid' })).ok).toBe(false)
+    expect((await emit(host, 'host:connect', { code: game.room.code, hostToken: game.hostToken })).ok).toBe(true)
+    const tampered = await game.client('https://trivia.example', '__Host-friends-trivia-admin=invalid')
+    expect(await emit(tampered, 'host:connect', { code: game.room.code, hostToken: game.hostToken }))
+      .toMatchObject({ ok: false, code: 'admin_auth_required' })
+  })
+
+  it('locks idle host sockets at expiry and stops private publication without disconnecting players', async () => {
+    const game = await fixture(false, true)
+    const cookie = await game.unlock()
+    const read = game.auth!.read
+    vi.spyOn(game.auth!, 'read').mockImplementation(headers => {
+      const session = read(headers)
+      return session ? { ...session, expiresAt: Date.now() + 150 } : null
+    })
+    const host = await game.client('https://trivia.example', cookie)
+    const locked = new Promise<void>(resolve => host.once('admin:locked', resolve))
+    expect((await emit(host, 'host:connect', { code: game.room.code, hostToken: game.hostToken })).ok).toBe(true)
+    await locked
+    const snapshot = vi.fn(), requests = vi.fn()
+    host.on('host:snapshot', snapshot)
+    host.on('host:recovery-requests', requests)
+    game.engine.emit('hostUpdated', game.room.id)
+    await new Promise(resolve => setTimeout(resolve, 100))
+    expect(snapshot).not.toHaveBeenCalled()
+    expect(requests).not.toHaveBeenCalled()
+    expect(await emit(host, 'host:connect', { code: game.room.code, hostToken: game.hostToken }))
+      .toMatchObject({ ok: false, code: 'admin_auth_required' })
+    expect((await emit(host, 'room:watch', { code: game.room.code })).ok).toBe(true)
+  })
+
+  it('fences queued commands after browser logout and cannot reuse the old host connection', async () => {
+    const game = await fixture(false, true)
+    const cookie = await game.unlock()
+    const host = await game.client('https://trivia.example', cookie)
+    await emit(host, 'host:connect', { code: game.room.code, hostToken: game.hostToken })
+    await new Promise(resolve => setTimeout(resolve, 100))
+    let release!: () => void
+    let started!: () => void
+    const ready = new Promise<void>(resolve => { started = resolve })
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const blocker = game.engine.runRoom(game.room.id, async () => { started(); await gate })
+    await ready
+    const queued = vi.spyOn(game.engine, 'runRoom')
+    const command = emit(host, 'host:command', { command: 'start' })
+    try {
+      await vi.waitFor(() => expect(queued).toHaveBeenCalled())
+      const response = await game.app.inject({
+        method: 'POST', url: '/api/admin/lock', headers: { origin: 'https://trivia.example', cookie },
+      })
+      expect(response.statusCode).toBe(204)
+    } finally { release() }
+    await blocker
+    expect(await command).toMatchObject({ ok: false, code: 'admin_auth_required' })
+    expect((await game.rooms.getById(game.room.id))?.state.phase).toBe('LOBBY')
+    expect(await emit(host, 'host:recovery-decision', { recoveryId: 'old', approved: true }))
+      .toMatchObject({ ok: false, code: 'admin_auth_required' })
+    expect(await emit(host, 'host:connect', { code: game.room.code, hostToken: game.hostToken }))
+      .toMatchObject({ ok: false, code: 'admin_auth_required' })
+  })
+
   it('detects lost membership and rejects unauthenticated, replaced-generation, and unowned cursors', async () => {
     const game = await fixture()
     const client = await game.client()

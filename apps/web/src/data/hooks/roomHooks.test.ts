@@ -8,7 +8,7 @@ const harness = vi.hoisted(() => ({
   effects: [] as Array<{ callback: () => void | (() => void); deps: unknown[]; pending: boolean; cleanup?: () => void }>,
   stateIndex: 0, refIndex: 0, effectIndex: 0,
   listeners: new Map<string, Set<(...args: unknown[]) => void>>(),
-  socket: { connected: true, id: 'first', on: vi.fn(), off: vi.fn(), emit: vi.fn() },
+  socket: { connected: true, id: 'first', on: vi.fn(), off: vi.fn(), emit: vi.fn(), disconnect: vi.fn(), connect: vi.fn() },
   identities: new Map<string, { playerId: string; reconnectToken: string; nickname: string }>(),
   emit: vi.fn(),
   clear: vi.fn(),
@@ -53,6 +53,7 @@ vi.mock('./useConnectionStatus', () => ({ useConnectionStatus: () => 'connected'
 import { usePlayerRoom } from './usePlayerRoom'
 import { useHostRoom } from './useHostRoom'
 import { SocketAckError } from '../../lib/socketClient'
+import { ADMIN_LOCKED, ADMIN_UNLOCKED } from '../../lib/adminAuth'
 
 const identity = { playerId: 'alex', reconnectToken: 'original-token', nickname: 'Alex' }
 const snapshot: RawSnapshot = {
@@ -85,6 +86,8 @@ beforeEach(() => {
   harness.emit.mockReset().mockResolvedValue(snapshot)
   harness.clear.mockClear()
   harness.socket.emit.mockClear()
+  harness.socket.disconnect.mockClear()
+  harness.socket.connect.mockClear()
   harness.socket.on.mockImplementation((name: string, callback: (...args: unknown[]) => void) => {
     const listeners = harness.listeners.get(name) ?? new Set()
     listeners.add(callback); harness.listeners.set(name, listeners)
@@ -97,6 +100,24 @@ afterEach(() => {
   vi.useRealTimers()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
+})
+
+describe('host admin reauthentication', () => {
+  it('blocks commands while locked and reconnects with fresh cookies without replaying mutations', async () => {
+    render(() => useHostRoom('ROOM')); await settle()
+    harness.emit.mockClear()
+    window.dispatchEvent(new Event(ADMIN_LOCKED))
+    await expect(render(() => useHostRoom('ROOM')).sendCommand('start')).rejects.toThrow('Unlock host tools')
+    expect(harness.emit).not.toHaveBeenCalled()
+    window.dispatchEvent(new Event(ADMIN_UNLOCKED))
+    expect(harness.socket.disconnect).toHaveBeenCalledOnce()
+    expect(harness.socket.connect).toHaveBeenCalledOnce()
+    event('disconnect')
+    harness.socket.id = 'reauthenticated'
+    event('connect'); await settle()
+    expect(harness.emit).toHaveBeenCalledWith('host:connect', { code: 'ROOM', hostToken: 'host-token' })
+    expect(harness.emit.mock.calls.some(([name]) => name === 'host:command')).toBe(false)
+  })
 })
 
 describe('player seat recovery', () => {

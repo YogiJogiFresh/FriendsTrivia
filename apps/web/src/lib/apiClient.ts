@@ -7,14 +7,17 @@
 
 import type { AudioPlaybackSettings } from './audioPlayback'
 import { MAX_SOURCE_BYTES } from './audioSnippets'
+import { notifyAdminLocked } from './adminAuth'
 
 export class ApiError extends Error {
   readonly status: number
+  readonly code?: string
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, code?: string) {
     super(message)
     this.name = 'ApiError'
     this.status = status
+    this.code = code
   }
 }
 
@@ -37,7 +40,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   if (!response.ok) {
-    throw new ApiError(await parseErrorBody(response), response.status)
+    let code: string | undefined
+    if (response.status === 401) {
+      const body = await response.clone().json().catch(() => null) as { code?: string } | null
+      if (body?.code === 'admin_auth_required') {
+        code = body.code
+        notifyAdminLocked()
+      }
+    }
+    throw new ApiError(await parseErrorBody(response), response.status, code)
   }
   if (response.status === 204) return undefined as T
   const text = await response.text()
@@ -51,6 +62,24 @@ function json(method: string, body?: unknown): RequestInit {
     headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   }
+}
+
+export interface AdminSessionStatus {
+  enabled: boolean
+  unlocked: boolean
+  expiresAt: number | null
+}
+
+export function getAdminSession(): Promise<AdminSessionStatus> {
+  return request('/api/admin/session', { cache: 'no-store' })
+}
+
+export function unlockAdmin(password: string): Promise<AdminSessionStatus> {
+  return request('/api/admin/unlock', json('POST', { password }))
+}
+
+export function lockAdmin(): Promise<void> {
+  return request('/api/admin/lock', { method: 'POST' })
 }
 
 // ---- Packs -----------------------------------------------------------

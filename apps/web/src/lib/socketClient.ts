@@ -2,6 +2,7 @@ import { io, type Socket } from 'socket.io-client'
 import type { ConnectionState } from '../data/types'
 import { traceEvent } from './diagnostics'
 import { commandLabels } from './hostCommands'
+import { notifyAdminLocked } from './adminAuth'
 
 /**
  * Single shared Socket.IO connection for the whole app. Connecting to no URL
@@ -64,7 +65,10 @@ export function emitWithAck<T = unknown>(event: string, payload: Record<string, 
       }
       traceEvent(result.ok ? 'socket:ack' : 'socket:rejected', { ...identity, ms: performance.now() - started })
       if (result.ok) resolve(result.data)
-      else reject(new SocketAckError(result.error, result.code))
+      else {
+        if (result.code === 'admin_auth_required') notifyAdminLocked()
+        reject(new SocketAckError(result.error, result.code))
+      }
       })
   })
 }

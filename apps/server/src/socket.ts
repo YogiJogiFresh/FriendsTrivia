@@ -8,6 +8,7 @@ import type { RoomRecord } from './game/types.js'
 import type { RoomRepository } from './repositories/rooms.js'
 import { allowedRequestOrigin } from './publicAccess.js'
 import { diagnose, diagnosticStage } from './diagnostics.js'
+import type { AdminAuth, AdminSession } from './adminAuth.js'
 type Ack = (result: {
   ok: true
   data?: unknown
@@ -16,7 +17,7 @@ type Ack = (result: {
   error: string
   code?: string
 }) => void
-export function registerSocketServer(app: FastifyInstance, rooms: RoomRepository, engine: GameEngine, publicUrl?: string): Server {
+export function registerSocketServer(app: FastifyInstance, rooms: RoomRepository, engine: GameEngine, publicUrl?: string, adminAuth?: AdminAuth): Server {
   const io = new Server(app.server, {
     cors: { origin: false },
     maxHttpBufferSize: 100000,
@@ -30,6 +31,33 @@ export function registerSocketServer(app: FastifyInstance, rooms: RoomRepository
   })
   interface PendingSnapshot { timer?: NodeJS.Timeout; full: boolean; running: boolean; dirty: boolean; queuedAt: number }
   const pendingSnapshots = new Map<string, PendingSnapshot>()
+  const adminTimers = new Map<string, NodeJS.Timeout>()
+  function requireAdmin(socket: Socket): void {
+    if (!adminAuth?.enabled) return
+    if (!socket.connected || socket.data.adminBlocked || !adminAuth.sameOrigin(socket.request.headers))
+      throw new DomainError('admin_auth_required', 'Unlock host tools to continue')
+    adminAuth.require((socket.data.adminSession as AdminSession | undefined) ?? adminAuth.read(socket.request.headers))
+  }
+  function lockHost(socket: Socket): void {
+    clearTimeout(adminTimers.get(socket.id))
+    adminTimers.delete(socket.id)
+    socket.data.adminBlocked = true
+    if (socket.data.role !== 'host') return
+    void socket.leave(`host:${socket.data.roomId}`)
+    socket.data.role = undefined
+    socket.data.hostToken = undefined
+    socket.emit('admin:locked')
+  }
+  function authorizedHost(socket: Socket): boolean {
+    try { requireAdmin(socket); return true }
+    catch { lockHost(socket); return false }
+  }
+  const stopLogout = adminAuth?.onLogout((id) => {
+    for (const socket of io.sockets.sockets.values()) {
+      const session = (socket.data.adminSession as AdminSession | undefined) ?? adminAuth.read(socket.request.headers)
+      if (session?.id === id) lockHost(socket)
+    }
+  })
   let stopping = false
   const playerSockets = new Map<string, string>()
   const seatKey = (ref: RoomRef, playerId: string) => `${ref.id}:${ref.generation}:${playerId}`
@@ -46,7 +74,7 @@ export function registerSocketServer(app: FastifyInstance, rooms: RoomRepository
     const requests = [...recoveryRequests.values()].filter((request) => request.ref.id === roomId && !request.approved)
     for (const socketId of io.sockets.adapter.rooms.get(`host:${roomId}`) ?? []) {
       const host = io.sockets.sockets.get(socketId)
-      if (host?.data.role === 'host' && host.data.roomId === roomId && typeof host.data.hostToken === 'string')
+      if (host?.data.role === 'host' && host.data.roomId === roomId && typeof host.data.hostToken === 'string' && authorizedHost(host))
         host.emit('host:recovery-requests', requests.filter((request) =>
           request.ref.generation === host.data.roomRef?.generation).map(requestView))
     }
@@ -122,7 +150,7 @@ export function registerSocketServer(app: FastifyInstance, rooms: RoomRepository
       const socket = io.sockets.sockets.get(socketId)
       if (!socket) continue
       if (socket.data.role === 'host' && socket.data.roomId === roomId &&
-        typeof socket.data.hostToken === 'string') {
+        typeof socket.data.hostToken === 'string' && authorizedHost(socket)) {
         socket.emit('host:snapshot', snapshot)
       } else {
         void socket.leave(`host:${roomId}`)
@@ -203,6 +231,9 @@ export function registerSocketServer(app: FastifyInstance, rooms: RoomRepository
   engine.on('hostUpdated', queueHostSnapshot)
   app.addHook('preClose', async () => {
     stopping = true
+    stopLogout?.()
+    for (const timer of adminTimers.values()) clearTimeout(timer)
+    adminTimers.clear()
     for (const pending of pendingSnapshots.values()) clearTimeout(pending.timer)
     pendingSnapshots.clear()
     for (const request of recoveryRequests.values()) clearTimeout(request.timer)
@@ -214,19 +245,28 @@ export function registerSocketServer(app: FastifyInstance, rooms: RoomRepository
   })
   io.on('connection', (socket) => {
     let reconnecting: { key: string; promise: Promise<Awaited<ReturnType<typeof playerSnapshot>>> } | undefined
-    function handle(ack: Ack, action: () => Promise<unknown>, serialize = true, requestId?: string): void {
+    function handle(ack: Ack, action: () => Promise<unknown>, serialize = true, requestId?: string, hostOnly = false): void {
       const execute = diagnose('socket', (trace) => app.log.info({ diagnostic: trace }, 'Game diagnostic'), async () => {
         if (requestId !== undefined && (typeof requestId !== 'string' || !/^[A-Za-z0-9_-]{8,100}$/.test(requestId)))
           throw new Error('Invalid request ID')
         if (serialize && rooms.mode === 'cloud' && !requestId) throw new Error('A request ID is required')
         const operationId = requestId ? `${socket.data.role}:${socket.data.playerId ?? 'host'}:${requestId}` : undefined
+        const authorizedAction = async () => {
+          if (hostOnly) requireAdmin(socket)
+          const output = await action()
+          if (hostOnly) requireAdmin(socket)
+          return output
+        }
         const result = await (serialize && typeof socket.data.roomId === 'string'
-          ? engine.runRoom(socket.data.roomId, action, operationId)
-          : action())
+          ? engine.runRoom(socket.data.roomId, authorizedAction, operationId)
+          : authorizedAction())
         diagnosticStage('ack_ready', 0)
         return result
       }, requestId)
       void execute.then((data) => {
+        if (hostOnly) requireAdmin(socket)
+        return data
+      }).then((data) => {
         if (typeof ack === 'function') ack({ ok: true, data })
       }, (error: unknown) => {
         if (typeof ack === 'function') ack({ ok: false, error: error instanceof Error ? error.message : 'Unexpected error',
@@ -261,6 +301,19 @@ export function registerSocketServer(app: FastifyInstance, rooms: RoomRepository
           throw new Error('Host authorization failed')
         }
         releasePlayer(socket)
+        if (typeof socket.data.roomId === 'string') {
+          void socket.leave(`host:${socket.data.roomId}`)
+          void socket.leave(`room:${socket.data.roomId}`)
+        }
+        if (adminAuth?.enabled) {
+          const session = adminAuth.read(socket.request.headers)!
+          adminAuth.require(session)
+          socket.data.adminSession = session
+          clearTimeout(adminTimers.get(socket.id))
+          const timer = setTimeout(() => lockHost(socket), session.expiresAt - Date.now())
+          timer.unref()
+          adminTimers.set(socket.id, timer)
+        }
         socket.data.roomId = room.id
         socket.data.role = 'host'
         socket.data.hostToken = payload.hostToken
@@ -268,7 +321,7 @@ export function registerSocketServer(app: FastifyInstance, rooms: RoomRepository
         void socket.join([`room:${room.id}`, `host:${room.id}`])
         sendRecoveryRequests(room.id)
         return (await engine.hostSnapshot(room))
-      }, false)
+      }, false, undefined, true)
     })
     socket.on('player:join', (payload: {
       code?: string
@@ -441,7 +494,7 @@ export function registerSocketServer(app: FastifyInstance, rooms: RoomRepository
           sendRecoveryRequests(room.id)
           broadcast(room.id)
         })
-      }, true, payload?.requestId)
+      }, true, payload?.requestId, true)
     })
     socket.on('player:recovery-status', (payload: { recoveryId?: string }, ack: Ack) => {
       handle(ack, async () => {
@@ -647,9 +700,11 @@ export function registerSocketServer(app: FastifyInstance, rooms: RoomRepository
         const receipt = {} as ReturnType<GameEngine['commandReceipt']>
         engine.afterCommit(() => Object.assign(receipt, engine.commandReceipt(committedRoom)))
         return receipt
-      }, true, payload?.requestId)
+      }, true, payload?.requestId, true)
     })
     socket.on('disconnect', () => {
+      clearTimeout(adminTimers.get(socket.id))
+      adminTimers.delete(socket.id)
       for (const request of recoveryRequests.values())
         if (request.requesterId === socket.id) removeRequest(request, 'disconnected')
       if (typeof socket.data.playerId === 'string' && typeof socket.data.roomId === 'string') {

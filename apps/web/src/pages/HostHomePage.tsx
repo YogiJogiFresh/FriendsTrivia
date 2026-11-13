@@ -11,6 +11,7 @@ import {
   type SpecialType,
 } from '../lib/apiClient'
 import { clearHostToken, listHostSessions, saveHostToken } from '../lib/roomStorage'
+import { ADMIN_UNLOCKED } from '../lib/adminAuth'
 import styles from './HostHomePage.module.css'
 
 interface RecoverableRoom extends HostedRoomSummary {
@@ -25,6 +26,7 @@ export function HostHomePage() {
   const [launchError, setLaunchError] = useState<string | null>(null)
   const [liveRooms, setLiveRooms] = useState<RecoverableRoom[]>([])
   const [liveRoomsLoading, setLiveRoomsLoading] = useState(true)
+  const [reloadToken, setReloadToken] = useState(0)
   const [liveRoomsError, setLiveRoomsError] = useState<string | null>(null)
   const [endingRoomCode, setEndingRoomCode] = useState<string | null>(null)
   const [teamsText, setTeamsText] = useState('')
@@ -58,7 +60,14 @@ export function HostHomePage() {
   }
 
   useEffect(() => {
+    const reload = () => setReloadToken((token) => token + 1)
+    window.addEventListener(ADMIN_UNLOCKED, reload)
+    return () => window.removeEventListener(ADMIN_UNLOCKED, reload)
+  }, [])
+
+  useEffect(() => {
     let cancelled = false
+    setLiveRoomsLoading(true)
     const sessions = listHostSessions()
     void Promise.all(
       sessions.map(async (session) => {
@@ -70,7 +79,8 @@ export function HostHomePage() {
           }
           return { room: { ...room, hostToken: session.hostToken }, error: null }
         } catch (err) {
-          if (err instanceof ApiError && (err.status === 401 || err.status === 404)) {
+          if (err instanceof ApiError && (err.status === 404 ||
+            (err.status === 401 && err.code !== 'admin_auth_required'))) {
             clearHostToken(session.roomCode)
             return { room: null, error: null }
           }
@@ -94,7 +104,7 @@ export function HostHomePage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [reloadToken])
 
   async function handleLaunch() {
     if (!selectedPack) return
