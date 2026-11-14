@@ -55,10 +55,12 @@ async function fixture(cloud = false, admin = false) {
     if (cloud) await (source as Awaited<ReturnType<typeof createCosmosStore>>).close()
     database.close()
   })
-  async function client(origin = 'https://trivia.example', cookie?: string) {
+  async function client(origin: string | null = 'https://trivia.example', cookie?: string,
+    transport: 'websocket' | 'polling' = 'websocket', fetchSite?: string) {
     const socket = io(address, {
-      transports: ['websocket'], forceNew: true,
-      extraHeaders: { Origin: origin, ...(cookie ? { Cookie: cookie } : {}) },
+      transports: [transport], forceNew: true,
+      extraHeaders: { ...(origin ? { Origin: origin } : {}), ...(cookie ? { Cookie: cookie } : {}),
+        ...(fetchSite ? { 'Sec-Fetch-Site': fetchSite } : {}) },
     })
     clients.push(socket)
     await new Promise<void>((resolve, reject) => {
@@ -93,6 +95,33 @@ async function disconnected(game: Awaited<ReturnType<typeof fixture>>, playerId:
 }
 
 describe('socket persistence acknowledgements', () => {
+  it('accepts unlocked same-origin polling without an Origin header', async () => {
+    const game = await fixture(false, true)
+    const cookie = await game.unlock()
+    const status = await game.app.inject({ url: '/api/admin/session', headers: { cookie } })
+    expect(status.json()).toMatchObject({ enabled: true, unlocked: true })
+    const guest = await game.client(null, undefined, 'polling', 'same-origin')
+    expect((await emit(guest, 'player:join', { code: game.room.code, nickname: 'Player' })).ok).toBe(true)
+    const host = await game.client(null, cookie, 'polling', 'same-origin')
+    expect((await emit(host, 'host:connect', { code: game.room.code, hostToken: 'invalid' })).ok).toBe(false)
+    expect((await emit(host, 'host:connect', { code: game.room.code, hostToken: game.hostToken })).ok).toBe(true)
+    expect((await emit(host, 'host:command', { command: 'start', expectedStateVersion: game.room.stateVersion })).ok).toBe(true)
+  })
+
+  it('rejects polling without same-origin proof or a valid admin cookie', async () => {
+    const game = await fixture(false, true)
+    const cookie = await game.unlock()
+    for (const fetchSite of [undefined, 'same-site', 'cross-site']) {
+      const host = await game.client(null, cookie, 'polling', fetchSite)
+      expect(await emit(host, 'host:connect', { code: game.room.code, hostToken: game.hostToken }))
+        .toMatchObject({ ok: false, code: 'admin_auth_required' })
+    }
+    const guest = await game.client(null, undefined, 'polling', 'same-origin')
+    expect(await emit(guest, 'host:connect', { code: game.room.code, hostToken: game.hostToken }))
+      .toMatchObject({ ok: false, code: 'admin_auth_required' })
+    await expect(game.client('https://other.example', cookie, 'polling', 'same-origin')).rejects.toBeDefined()
+  })
+
   it('requires both admin unlock and room token while public watching and joining remain available', async () => {
     const game = await fixture(false, true)
     const guest = await game.client()

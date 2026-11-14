@@ -34,7 +34,11 @@ export function registerSocketServer(app: FastifyInstance, rooms: RoomRepository
   const adminTimers = new Map<string, NodeJS.Timeout>()
   function requireAdmin(socket: Socket): void {
     if (!adminAuth?.enabled) return
-    if (!socket.connected || socket.data.adminBlocked || !adminAuth.sameOrigin(socket.request.headers))
+    const headers = socket.request.headers
+    // Same-origin polling GETs omit Origin; Fetch Metadata still binds browser requests.
+    const sameOrigin = adminAuth.sameOrigin(headers) ||
+      (headers.origin === undefined && headers['sec-fetch-site'] === 'same-origin')
+    if (!socket.connected || socket.data.adminBlocked || !sameOrigin)
       throw new DomainError('admin_auth_required', 'Unlock host tools to continue')
     adminAuth.require((socket.data.adminSession as AdminSession | undefined) ?? adminAuth.read(socket.request.headers))
   }
