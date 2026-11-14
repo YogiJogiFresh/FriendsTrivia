@@ -22,7 +22,9 @@ describe('pack deletion', () => {
       relativePath: `songs\\link-${index}.mp3`, originalName: `link-${index}.mp3`, mimeType: 'audio/mpeg', sizeBytes: 10,
     })).id)
     const pack = await packs.create({ title: 'Links' })
-    const config = { correctAnswer: 'Connection', acceptedAnswers: ['Connection'], link: { mediaAssetIds: ids, hintDelaySeconds: 10 } }
+    const config = { correctAnswer: 'Connection', acceptedAnswers: ['Connection'], link: {
+      mediaAssetIds: ids, hintDelaySeconds: 10, revealNotes: 'First song - First artist\nSecond song - Second artist',
+    } }
     const input = { title: 'Links', status: 'ready' as const, categories: [{ title: 'Links', clues: [
       { type: 'music_free_text', boardValue: 100, prompt: 'Connection?', config },
       { type: 'music_free_text', boardValue: 200, prompt: 'Ordinary?', config: { correctAnswer: 'Answer' } },
@@ -30,6 +32,10 @@ describe('pack deletion', () => {
     ] }] }
     const saved = (await packs.replace(pack.id, input))!
     expect(saved.categories[0]?.clues[0]?.config).toEqual(config)
+    const invalidNotes = structuredClone(input)
+    ;(invalidNotes.categories[0]!.clues[0]!.config as typeof config).link.revealNotes = 'a'.repeat(2001)
+    await expect(packs.replace(pack.id, invalidNotes)).rejects.toThrow('songs and artists')
+    expect((await packs.get(pack.id))?.categories[0]?.clues[0]?.config).toEqual(config)
     expect((await packs.list())[0]).toMatchObject({ ordinaryClueCount: 2, specialEligibleClueCount: 1 })
     const rooms = new RoomRepository(database)
     const { room } = await rooms.create(pack.id, { timerSeconds: 30, speedBonusMax: 0, priceRankPercentages: [1], uniqueNicknames: true }, 4)

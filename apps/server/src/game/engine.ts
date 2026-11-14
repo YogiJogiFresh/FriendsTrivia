@@ -198,6 +198,7 @@ export class GameEngine extends EventEmitter {
             revealGif: revealed && isRevealGif(clueConfig?.revealGif)
               ? clueConfig.revealGif
               : undefined,
+            revealNotes: revealed ? link?.revealNotes : undefined,
             choices: !votingHidden && visibleClue.type === 'music_multiple_choice'
               ? this.safeChoices(clueConfig ?? {})
               : undefined,

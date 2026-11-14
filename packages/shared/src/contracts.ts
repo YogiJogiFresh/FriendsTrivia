@@ -203,6 +203,7 @@ export const LinkConfigSchema = z.object({
   mediaAssetIds: z.array(EntityIdSchema).length(4)
     .refine((ids) => new Set(ids).size === 4, 'Link songs must be distinct'),
   hintDelaySeconds: z.number().finite().int().min(0).max(300),
+  revealNotes: z.string().max(2000).optional(),
 }).strict()
 export type LinkConfig = z.infer<typeof LinkConfigSchema>
 
@@ -562,6 +563,7 @@ const activeClueCommonShape = {
   boardValue: z.number().int().positive(),
   prompt: trimmedString(1, 1000),
   context: trimmedString(1, 2000).optional(),
+  revealNotes: z.string().max(2000).optional(),
   imageUrl: z.string().url().optional(),
   timerSeconds: z.number().int().min(5).max(300),
   openedAtMs: EpochMillisecondsSchema.nullable(),

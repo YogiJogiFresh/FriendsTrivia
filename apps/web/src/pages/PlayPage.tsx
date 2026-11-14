@@ -406,6 +406,7 @@ export function PlayPage() {
               </div>
             ) : null}
             {currentClue?.revealedAnswer ? <p className={styles.revealedAnswer}>{currentClue.revealedAnswer}</p> : null}
+            {currentClue?.revealNotes ? <p className={styles.revealNotes}>{currentClue.revealNotes}</p> : null}
             {currentClue?.revealGif ? (
               <img className={styles.revealGif} src={currentClue.revealGif.url} alt={currentClue.revealGif.alt} />
             ) : null}

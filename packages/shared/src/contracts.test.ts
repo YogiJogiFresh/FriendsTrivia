@@ -45,7 +45,8 @@ describe('shared contract schemas', () => {
     const clue = {
       key: 'link-100', type: 'MUSIC_FREE_TEXT', boardValue: 100, position: 0,
       prompt: 'What connects these songs?', acceptedAnswers: ['Connection'],
-      config: { link: { mediaAssetIds: ['one', 'two', 'three', 'four'], hintDelaySeconds: 10 } },
+      config: { link: { mediaAssetIds: ['one', 'two', 'three', 'four'], hintDelaySeconds: 10,
+        revealNotes: 'First song - First artist\nSecond song - Second artist' } },
     }
     expect(ManifestClueSchema.parse(clue)).toMatchObject(clue)
     expect(ClueSchema.safeParse({ ...clue, id: 'clue', categoryId: 'category' }).success).toBe(true)
@@ -57,6 +58,8 @@ describe('shared contract schemas', () => {
       { ...clue.config.link, hintDelaySeconds: Infinity },
       { ...clue.config.link, hintDelaySeconds: -1 },
       { ...clue.config.link, hintDelaySeconds: 301 },
+      { ...clue.config.link, revealNotes: 7 },
+      { ...clue.config.link, revealNotes: 'a'.repeat(2001) },
     ]) expect(ManifestClueSchema.safeParse({ ...clue, config: { link } }).success).toBe(false)
     expect(ManifestClueSchema.safeParse({ ...clue, type: 'PRICE_SLIDER' }).success).toBe(false)
     const publicClue = {
@@ -66,6 +69,8 @@ describe('shared contract schemas', () => {
       link: { mediaUrls: ['https://example.com/one.mp3', null, 'https://example.com/three.mp3', null], hintVisible: false },
     }
     expect(ActivePublicClueSchema.parse(publicClue)).toEqual(publicClue)
+    expect(ActivePublicClueSchema.parse({ ...publicClue, revealNotes: clue.config.link.revealNotes }))
+      .toHaveProperty('revealNotes', clue.config.link.revealNotes)
     expect(ActivePublicClueSchema.safeParse({ ...publicClue, link: { ...publicClue.link, mediaUrls: [null] } }).success).toBe(false)
   })
   it('parses a manifest and supplies pragmatic defaults', () => {

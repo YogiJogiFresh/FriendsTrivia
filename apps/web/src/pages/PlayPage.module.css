@@ -53,6 +53,11 @@
   font-weight: var(--font-weight-bold);
 }
 
+.revealNotes {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .revealGif {
   display: block;
   width: min(100%, 24rem);

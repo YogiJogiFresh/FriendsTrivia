@@ -1,6 +1,7 @@
 interface LinkConfig {
   mediaAssetIds: (string | null)[]
   hintDelaySeconds: number
+  revealNotes?: string
 }
 
 export function getLinkConfig(clue: { type: string; config: unknown }): LinkConfig | undefined {
@@ -18,6 +19,8 @@ export function getLinkConfig(clue: { type: string; config: unknown }): LinkConf
   return {
     mediaAssetIds: validIds && validDelay ? [...ids] as (string | null)[] : [null, null, null, null],
     hintDelaySeconds: validDelay ? value.hintDelaySeconds as number : 10,
+    ...(typeof value.revealNotes === 'string' && value.revealNotes.length <= 2000 && value.revealNotes.trim()
+      ? { revealNotes: value.revealNotes.trim() } : {}),
   }
 }
 

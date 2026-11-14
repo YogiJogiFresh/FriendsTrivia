@@ -100,7 +100,7 @@ export interface ServerPackSummary {
 export type ServerClueType = 'music_multiple_choice' | 'music_free_text' | 'price_slider'
 
 export interface ServerClueConfig {
-  link?: { mediaAssetIds: (string | null)[]; hintDelaySeconds: number }
+  link?: { mediaAssetIds: (string | null)[]; hintDelaySeconds: number; revealNotes?: string }
   mediaPlayback?: AudioPlaybackSettings
   revealMediaPlayback?: AudioPlaybackSettings
   choices?: string[]

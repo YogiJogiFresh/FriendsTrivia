@@ -1113,6 +1113,22 @@ export function HostEditorPage() {
                           <summary>Answer reveal (optional)</summary>
                           <div className={styles.revealContent}>
                             <p className={styles.helperText}>Play a song or show a GIF when the answer is revealed.</p>
+                            {clue.config.link ? (
+                              <TextareaField
+                                id={`link-reveal-notes-${clue.key}`}
+                                label="Songs and artists (optional)"
+                                hint="Shown beneath the Link answer on reveal. Enter song names and artists, one per line (up to 2000 characters). Not used for scoring."
+                                rows={4}
+                                maxLength={2000}
+                                value={clue.config.link.revealNotes ?? ''}
+                                onChange={(event) => updateClue(selectedCategory.key, clue.key, {
+                                  config: { ...clue.config, link: {
+                                    ...clue.config.link!,
+                                    revealNotes: event.target.value,
+                                  } },
+                                })}
+                              />
+                            ) : null}
                             <div className={styles.field}>
                               <label className={styles.statusLabel} htmlFor={`clue-reveal-media-${clue.key}`}>
                                 Answer reveal song (optional)

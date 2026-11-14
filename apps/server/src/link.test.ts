@@ -7,6 +7,22 @@ const clue = { type: 'music_free_text', boardValue: 100, prompt: 'Connection?', 
 const pack = { title: 'Link', categories: [{ title: 'Connections', clues: [clue] }] }
 
 describe('Link configuration', () => {
+  it('accepts optional multiline reveal text and rejects invalid or oversized values', () => {
+    for (const revealNotes of ['', 'First song - First artist\nSecond song - Second artist', 'a'.repeat(2000)]) {
+      const withNotes = { ...link, revealNotes }
+      expect(() => validatePack({ ...pack, categories: [{ title: 'Links', clues: [
+        { ...clue, config: { ...clue.config, link: withNotes } },
+      ] }] })).not.toThrow()
+      expect(getLinkConfig({ ...clue, config: { link: withNotes } })?.revealNotes)
+        .toBe(revealNotes.trim() || undefined)
+    }
+    for (const revealNotes of [null, 7, {}, 'a'.repeat(2001)]) {
+      expect(() => validatePack({ ...pack, categories: [{ title: 'Links', clues: [
+        { ...clue, config: { ...clue.config, link: { ...link, revealNotes } } },
+      ] }] })).toThrow('songs and artists')
+      expect(getLinkConfig({ ...clue, config: { link: { ...link, revealNotes } } })?.revealNotes).toBeUndefined()
+    }
+  })
   it('distinguishes Link from free text and keeps deleted or malformed Links marked', () => {
     expect(getLinkConfig({ ...clue, config: { correctAnswer: 'Answer' } })).toBeUndefined()
     expect(getLinkConfig(clue)).toEqual(link)

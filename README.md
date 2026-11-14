@@ -127,6 +127,10 @@ to 10 seconds (whole seconds from 0 to 300). Players can answer immediately; the
 question GIF appear on Display/player screens when the delay expires. Link can also be the Final
 Question, starting only after wagering.
 
+For Link clues, **Answer reveal > Songs and artists** accepts optional multiline text
+(up to 2000 characters). It appears beneath the correct answer on Display, player screens
+and Board Preview only after reveal. It does not change accepted answers or scoring.
+
 Display loops songs 1 through 4 until **Reveal**, including after answers close. Pause freezes
 playback and the hint delay; Replay Link audio restarts song 1 without resetting either the hint
 or answer clock. Reveal uses its separate song/GIF settings. Audio loading does not postpone the

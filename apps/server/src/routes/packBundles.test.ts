@@ -46,7 +46,8 @@ describe('portable pack bundles', () => {
       title: 'Link', status: 'ready', categories: [{ title: 'Links', clues: [{
         type: 'music_free_text', boardValue: 100, prompt: 'Connection?',
         mediaAssetId: ids[0]!, revealMediaAssetId: ids[3]!,
-        config: { correctAnswer: 'Connection', link: { mediaAssetIds: ids, hintDelaySeconds: 10 } },
+        config: { correctAnswer: 'Connection', link: { mediaAssetIds: ids, hintDelaySeconds: 10,
+          revealNotes: 'First song - First artist\nSecond song - Second artist' } },
       }] }],
     }))!
     const bundle = await createPackBundle(saved, media, sourceRoot)
@@ -57,7 +58,8 @@ describe('portable pack bundles', () => {
     const imported = await importPackBundle(bundle, targetPacks, targetMedia, targetRoot) as typeof saved
     const clue = imported.categories[0]!.clues[0]!
     const config = clue.config as { correctAnswer: string; link: { mediaAssetIds: string[]; hintDelaySeconds: number } }
-    expect(config).toMatchObject({ correctAnswer: 'Connection', link: { hintDelaySeconds: 10 } })
+    expect(config).toMatchObject({ correctAnswer: 'Connection', link: { hintDelaySeconds: 10,
+      revealNotes: 'First song - First artist\nSecond song - Second artist' } })
     expect(config.link.mediaAssetIds).toHaveLength(4)
     expect(config.link.mediaAssetIds.every((id) => !ids.includes(id))).toBe(true)
     expect(clue.mediaAssetId).toBe(config.link.mediaAssetIds[0])

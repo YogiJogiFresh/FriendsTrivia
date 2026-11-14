@@ -260,6 +260,11 @@
   color: var(--color-success);
 }
 
+.revealNotes {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .revealGif {
   display: grid;
   gap: var(--space-2);

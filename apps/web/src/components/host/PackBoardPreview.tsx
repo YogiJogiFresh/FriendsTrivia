@@ -100,6 +100,7 @@ function PreviewWorkspace({ categories, usedClueIds, onReveal, onReset, onAddClu
           {revealed ? (
             <p className={styles.answer}>{selected.clue.revealedAnswer || 'No correct answer selected or entered yet.'}</p>
           ) : null}
+          {revealed && selected.clue.revealNotes ? <p className={styles.revealNotes}>{selected.clue.revealNotes}</p> : null}
           {revealed && selected.clue.revealGif ? (
             <PreviewGif key={selected.clue.revealGif.url} gif={selected.clue.revealGif} />
           ) : null}

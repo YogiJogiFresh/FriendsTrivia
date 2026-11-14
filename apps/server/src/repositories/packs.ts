@@ -91,7 +91,7 @@ export function validatePack(input: {
         if (clue.type !== 'music_free_text') throw new Error('Link is only supported on free-text clues')
         const link = config.link
         if (!link || typeof link !== 'object' || Array.isArray(link)) throw new Error('Link settings are invalid')
-        const { mediaAssetIds, hintDelaySeconds } = link as Record<string, unknown>
+        const { mediaAssetIds, hintDelaySeconds, revealNotes } = link as Record<string, unknown>
         if (!Array.isArray(mediaAssetIds) || mediaAssetIds.length !== 4 ||
           mediaAssetIds.some((id) => typeof id !== 'string' || !id.trim()) ||
           new Set(mediaAssetIds).size !== 4) {
@@ -100,6 +100,9 @@ export function validatePack(input: {
         if (typeof hintDelaySeconds !== 'number' || !Number.isInteger(hintDelaySeconds) ||
           hintDelaySeconds < 0 || hintDelaySeconds > 300) {
           throw new Error('Link hint delay must be a whole number between 0 and 300 seconds')
+        }
+        if (revealNotes !== undefined && (typeof revealNotes !== 'string' || revealNotes.length > 2000)) {
+          throw new Error('Link songs and artists must be text of at most 2000 characters')
         }
       }
       for (const key of ['mediaPlayback', 'revealMediaPlayback']) {

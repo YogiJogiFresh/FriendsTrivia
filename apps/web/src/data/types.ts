@@ -74,6 +74,7 @@ interface BaseClue {
    * the answer is a secret until then.
    */
   revealedAnswer?: string
+  revealNotes?: string
 }
 
 export interface MusicMultipleChoiceClue extends BaseClue {

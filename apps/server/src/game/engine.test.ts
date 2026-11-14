@@ -99,7 +99,8 @@ async function createLinkGame(delay = 10, specials: SpecialType[] = [], finalQue
       VALUES (?, ?, ?, 'audio/mpeg', 1)`).run(id, `songs/${id}.mp3`, `${id}.mp3`)
   }
   const config = { ...game.packInput.categories[0]!.clues[0]!.config,
-    link: { mediaAssetIds: ['test-media', 'link-two', 'link-three', 'link-four'], hintDelaySeconds: delay } }
+    link: { mediaAssetIds: ['test-media', 'link-two', 'link-three', 'link-four'], hintDelaySeconds: delay,
+      revealNotes: 'First song - First artist\nSecond song - Second artist' } }
   game.database.prepare('UPDATE clues SET config_json = ?, is_final = ? WHERE id = ?')
     .run(JSON.stringify(config), finalQuestion ? 1 : 0, game.clueIds[0]!)
   return game
@@ -121,6 +122,7 @@ describe('Link clues', () => {
           '/api/media/link-three/stream', '/api/media/link-four/stream'] } })
       expect(pair.public.activeClue?.mediaUrl).toBeUndefined()
       expect(pair.public.activeClue?.questionGif).toBeUndefined()
+      expect(pair.public.activeClue?.revealNotes).toBeUndefined()
       expect(pair.host?.activeClue?.prompt).toBe('Name the song')
       await game.engine.submitAnswer(room, game.playerOne.id, 'Dancing Queen')
       room = (await game.rooms.getById(room.id))!
@@ -135,6 +137,7 @@ describe('Link clues', () => {
       expect(room.state.deadline).toBe(deadline)
       expect((await game.engine.publicSnapshot(room)).activeClue).toMatchObject({
         prompt: 'Name the song', link: { hintVisible: true }, questionGif: { alt: 'Question picture' },
+        revealNotes: undefined,
       })
     } finally { game.engine.dispose() }
   })
@@ -226,6 +229,7 @@ describe('Link clues', () => {
       room = await game.engine.reveal(room)
       expect((await game.engine.publicSnapshot(room)).activeClue).toMatchObject({
         prompt: 'Name the song', answer: 'Dancing Queen', link: { hintVisible: true },
+        revealNotes: 'First song - First artist\nSecond song - Second artist',
       })
       const updated = vi.fn()
       game.engine.on('roomUpdated', updated)
@@ -247,6 +251,12 @@ describe('Link clues', () => {
       room = await game.engine.startFinalQuestion(room)
       expect((await game.engine.publicSnapshot(room)).activeClue).toMatchObject({
         prompt: 'Name the song', link: { hintVisible: true }, special: undefined,
+        revealNotes: undefined,
+      })
+      room = await game.engine.closeAnswers(room)
+      room = await game.engine.reveal(room)
+      expect((await game.engine.publicSnapshot(room)).activeClue).toMatchObject({
+        answer: 'Dancing Queen', revealNotes: 'First song - First artist\nSecond song - Second artist',
       })
     } finally { game.engine.dispose() }
   })

@@ -57,6 +57,7 @@ export interface RawActiveClue {
   choices?: string[]
   price?: RawPriceConfig
   answer?: unknown
+  revealNotes?: string
 }
 
 export interface RawPlayerScore {
@@ -229,6 +230,7 @@ export function cluesFromSnapshot(snapshot: Pick<RawSnapshot, 'board' | 'usedClu
         questionGif: active?.questionGif,
         link: active?.link,
         revealedAnswer: formatRevealedAnswer(active),
+        revealNotes: active?.revealNotes,
       }
       if (uiType === 'music-multiple-choice') {
         return { ...base, type: uiType, options: optionsFromChoices(active?.choices) }
