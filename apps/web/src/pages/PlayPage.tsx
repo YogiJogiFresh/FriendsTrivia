@@ -382,9 +382,9 @@ export function PlayPage() {
         {game.room.phase === 'ANSWERS_CLOSED' ? (
           <div className={styles.centeredState}>
             <h1>Answers locked</h1>
-            {currentClue?.questionGif ? <>
+            {currentClue?.questionGif || currentClue?.link ? <>
               <p>{currentClue.prompt}</p>
-              <QuestionGif key={`${currentClue.id}-${currentClue.questionGif.url}`} gif={currentClue.questionGif} />
+              {currentClue.questionGif ? <QuestionGif key={`${currentClue.id}-${currentClue.questionGif.url}`} gif={currentClue.questionGif} /> : null}
             </> : null}
             {currentClue?.special ? (
               <div className={styles.specialBanner}>

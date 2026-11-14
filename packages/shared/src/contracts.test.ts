@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   ActivePublicClueSchema,
+  ClueSchema,
   AnswerAcknowledgementSchema,
   DEFAULT_GAME_SETTINGS,
   GameSettingsSchema,
@@ -40,6 +41,33 @@ const validManifest = {
 } as const
 
 describe('shared contract schemas', () => {
+  it('supports Link on existing free-text clues and manifests without changing answer types', () => {
+    const clue = {
+      key: 'link-100', type: 'MUSIC_FREE_TEXT', boardValue: 100, position: 0,
+      prompt: 'What connects these songs?', acceptedAnswers: ['Connection'],
+      config: { link: { mediaAssetIds: ['one', 'two', 'three', 'four'], hintDelaySeconds: 10 } },
+    }
+    expect(ManifestClueSchema.parse(clue)).toMatchObject(clue)
+    expect(ClueSchema.safeParse({ ...clue, id: 'clue', categoryId: 'category' }).success).toBe(true)
+    for (const link of [
+      { ...clue.config.link, mediaAssetIds: ['one', 'two', 'three', 'one'] },
+      { ...clue.config.link, mediaAssetIds: ['one', 'two', 'three', null] },
+      { ...clue.config.link, mediaAssetIds: ['one', 'two', 'three'] },
+      { ...clue.config.link, hintDelaySeconds: 1.5 },
+      { ...clue.config.link, hintDelaySeconds: Infinity },
+      { ...clue.config.link, hintDelaySeconds: -1 },
+      { ...clue.config.link, hintDelaySeconds: 301 },
+    ]) expect(ManifestClueSchema.safeParse({ ...clue, config: { link } }).success).toBe(false)
+    expect(ManifestClueSchema.safeParse({ ...clue, type: 'PRICE_SLIDER' }).success).toBe(false)
+    const publicClue = {
+      id: 'clue', categoryId: 'category', type: 'MUSIC_FREE_TEXT', boardValue: 100,
+      prompt: 'What connects these songs?', timerSeconds: 30, openedAtMs: null, deadlineMs: null,
+      startOffsetSeconds: 0, playbackDurationSeconds: 30,
+      link: { mediaUrls: ['https://example.com/one.mp3', null, 'https://example.com/three.mp3', null], hintVisible: false },
+    }
+    expect(ActivePublicClueSchema.parse(publicClue)).toEqual(publicClue)
+    expect(ActivePublicClueSchema.safeParse({ ...publicClue, link: { ...publicClue.link, mediaUrls: [null] } }).success).toBe(false)
+  })
   it('parses a manifest and supplies pragmatic defaults', () => {
     const manifest = PackManifestSchema.parse(validManifest)
 

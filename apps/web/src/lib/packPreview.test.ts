@@ -20,6 +20,18 @@ function categories(patch: Partial<PreviewDraftClue> = {}): PreviewDraftCategory
 }
 
 describe('pack draft preview', () => {
+  it('previews the complete Link order manually without a legacy single-song source or a draft mutation', () => {
+    const draft = categories({ config: { correctAnswer: 'Connection',
+      link: { mediaAssetIds: ['song one', 'two', 'three', 'four'], hintDelaySeconds: 12 } } })
+    const original = structuredClone(draft)
+    const preview = clueFromDraft(draft, clue.key, false)
+    expect(preview).toMatchObject({ hintDelaySeconds: 12, clue: { type: 'music-free-text', mediaUrl: undefined,
+      prompt: 'Unsaved question', link: { hintVisible: true, mediaUrls: [
+        '/api/media/song%20one/stream', '/api/media/two/stream', '/api/media/three/stream', '/api/media/four/stream',
+      ] }, revealedAnswer: undefined } })
+    expect(clueFromDraft(draft, clue.key, true)?.clue.revealedAnswer).toBe('Connection')
+    expect(draft).toEqual(original)
+  })
   it('uses stable unsaved keys and excludes the separate Final Question from board tiles', () => {
     const draft = categories()
     draft[0]!.clues.push({ ...clue, key: 'final', finalQuestion: true })

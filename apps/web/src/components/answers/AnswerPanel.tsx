@@ -71,7 +71,8 @@ export function AnswerPanel({ clue, disabled = false, submitted = false, onSubmi
   const controlsDisabled = disabled || phase === 'submitting'
   return (
     <div className={styles.panel}>
-      {!isSubmitted || clue.questionGif ? <p className={styles.prompt}>{clue.prompt}</p> : null}
+      {!isSubmitted || clue.questionGif || clue.link ?
+        <p className={styles.prompt} aria-live={clue.link ? 'polite' : undefined}>{clue.prompt}</p> : null}
       {clue.questionGif ? <QuestionGif key={`${clue.id}-${clue.questionGif.url}`} gif={clue.questionGif} /> : null}
 
       {isSubmitted ? <p className={styles.submittedState} role="status">Submitted</p> : <>

@@ -1,18 +1,34 @@
-import type { PackInput, PackStore, PackSummary } from '../domain.js'
+import type { MediaStore, PackInput, PackStore, PackSummary } from '../domain.js'
 import { domainFrom, type DomainSource } from '../sqliteStore.js'
 import { createId } from '../ids.js'
 import { isRevealGif } from '../gifs.js'
+import { getLinkConfig } from '../link.js'
 export type { PackSummary } from '../domain.js'
 
 export class PackRepository {
   private readonly store: PackStore
-  constructor(source: DomainSource | PackStore) { this.store = 'replace' in source ? source : domainFrom(source).packs }
+  private readonly media?: MediaStore
+  constructor(source: DomainSource | PackStore) {
+    if ('replace' in source) this.store = source
+    else {
+      const domain = domainFrom(source)
+      this.store = domain.packs
+      this.media = domain.media
+    }
+  }
   async list(includeArchived = false) { return (await this.store.list(includeArchived)).items }
   get(id: string) { return this.store.get(id) }
   create(input: { title: string; description?: string }) { return this.store.create(input, createId()) }
   async replace(id: string, input: PackInput, importOwner?: { kind: 'operation'; id: string }) {
     validatePack(input)
     const current = await this.store.get(id)
+    if (current) {
+      const ids = new Set(input.categories.flatMap((category) => category.clues.flatMap((clue) =>
+        getLinkConfig(clue)?.mediaAssetIds ?? [])))
+      for (const mediaId of ids) {
+        if (!mediaId || !await this.media?.get(mediaId)) throw new Error('Every Link song must reference an existing media asset')
+      }
+    }
     return current ? this.store.replace(id, input, current.revision, createId(), importOwner) : undefined
   }
   archive(id: string) { return this.store.archive(id) }
@@ -71,6 +87,21 @@ export function validatePack(input: {
       const config = clue.config && typeof clue.config === 'object'
         ? (clue.config as Record<string, unknown>)
         : {}
+      if (Object.prototype.hasOwnProperty.call(config, 'link')) {
+        if (clue.type !== 'music_free_text') throw new Error('Link is only supported on free-text clues')
+        const link = config.link
+        if (!link || typeof link !== 'object' || Array.isArray(link)) throw new Error('Link settings are invalid')
+        const { mediaAssetIds, hintDelaySeconds } = link as Record<string, unknown>
+        if (!Array.isArray(mediaAssetIds) || mediaAssetIds.length !== 4 ||
+          mediaAssetIds.some((id) => typeof id !== 'string' || !id.trim()) ||
+          new Set(mediaAssetIds).size !== 4) {
+          throw new Error('Link needs exactly four distinct media asset IDs')
+        }
+        if (typeof hintDelaySeconds !== 'number' || !Number.isInteger(hintDelaySeconds) ||
+          hintDelaySeconds < 0 || hintDelaySeconds > 300) {
+          throw new Error('Link hint delay must be a whole number between 0 and 300 seconds')
+        }
+      }
       for (const key of ['mediaPlayback', 'revealMediaPlayback']) {
         const playback = config[key]
         if (playback === undefined) continue

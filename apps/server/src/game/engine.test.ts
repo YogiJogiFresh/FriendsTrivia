@@ -92,6 +92,165 @@ async function createGame(specials: SpecialType[] = []) {
     playerTwo: playerTwo.player,
   }
 }
+async function createLinkGame(delay = 10, specials: SpecialType[] = [], finalQuestion = false) {
+  const game = await createGame(specials)
+  for (const id of ['link-two', 'link-three', 'link-four']) {
+    game.database.prepare(`INSERT INTO media_assets (id, relative_path, original_name, mime_type, size_bytes)
+      VALUES (?, ?, ?, 'audio/mpeg', 1)`).run(id, `songs/${id}.mp3`, `${id}.mp3`)
+  }
+  const config = { ...game.packInput.categories[0]!.clues[0]!.config,
+    link: { mediaAssetIds: ['test-media', 'link-two', 'link-three', 'link-four'], hintDelaySeconds: delay } }
+  game.database.prepare('UPDATE clues SET config_json = ?, is_final = ? WHERE id = ?')
+    .run(JSON.stringify(config), finalQuestion ? 1 : 0, game.clueIds[0]!)
+  return game
+}
+
+describe('Link clues', () => {
+  afterEach(() => vi.useRealTimers())
+
+  it('opens answers immediately but publishes the hint and question GIF only when due, including after closure', async () => {
+    vi.useFakeTimers()
+    const game = await createLinkGame()
+    try {
+      let room = await game.engine.startGame(game.room)
+      room = await game.engine.selectClue(room, game.clueIds[0]!)
+      const deadline = room.state.deadline
+      const pair = await game.engine.snapshotPair(room)
+      expect(pair.public.activeClue).toMatchObject({ prompt: 'Listen to the four songs. What links them?',
+        link: { hintVisible: false, mediaUrls: ['/api/media/test-media/stream', '/api/media/link-two/stream',
+          '/api/media/link-three/stream', '/api/media/link-four/stream'] } })
+      expect(pair.public.activeClue?.mediaUrl).toBeUndefined()
+      expect(pair.public.activeClue?.questionGif).toBeUndefined()
+      expect(pair.host?.activeClue?.prompt).toBe('Name the song')
+      await game.engine.submitAnswer(room, game.playerOne.id, 'Dancing Queen')
+      room = (await game.rooms.getById(room.id))!
+      room = await game.engine.closeAnswers(room)
+      const version = room.stateVersion
+      const updated = vi.fn()
+      game.engine.on('roomUpdated', updated)
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(updated).toHaveBeenCalledWith(room.id)
+      room = (await game.rooms.getById(room.id))!
+      expect(room.stateVersion).toBe(version)
+      expect(room.state.deadline).toBe(deadline)
+      expect((await game.engine.publicSnapshot(room)).activeClue).toMatchObject({
+        prompt: 'Name the song', link: { hintVisible: true }, questionGif: { alt: 'Question picture' },
+      })
+    } finally { game.engine.dispose() }
+  })
+
+  it('freezes the independent hint clock when paused after early answer closure', async () => {
+    vi.useFakeTimers()
+    const game = await createLinkGame()
+    try {
+      let room = await game.engine.startGame(game.room)
+      room = await game.engine.selectClue(room, game.clueIds[0]!)
+      await vi.advanceTimersByTimeAsync(3_000)
+      room = await game.engine.closeAnswers(room)
+      room = await game.engine.pause(room)
+      expect(room.state.linkHintRemainingMs).toBe(7_000)
+      await vi.advanceTimersByTimeAsync(20_000)
+      expect((await game.engine.publicSnapshot(room)).activeClue?.link?.hintVisible).toBe(false)
+      room = await game.engine.resume(room)
+      expect(room.state.phase).toBe('ANSWERS_CLOSED')
+      await vi.advanceTimersByTimeAsync(6_999)
+      expect((await game.engine.publicSnapshot(room)).activeClue?.link?.hintVisible).toBe(false)
+      await vi.advanceTimersByTimeAsync(1)
+      expect((await game.engine.publicSnapshot(room)).activeClue?.link?.hintVisible).toBe(true)
+    } finally { game.engine.dispose() }
+  })
+
+  it('starts fresh timing on reset and cancels obsolete attempts on exit', async () => {
+    vi.useFakeTimers()
+    const game = await createLinkGame()
+    try {
+      let room = await game.engine.startGame(game.room)
+      room = await game.engine.selectClue(room, game.clueIds[0]!)
+      const attempt = room.state.attempt
+      await vi.advanceTimersByTimeAsync(7_000)
+      room = await game.engine.resetClue(room)
+      expect(room.state.attempt).toBe((attempt ?? 0) + 1)
+      await vi.advanceTimersByTimeAsync(3_000)
+      expect((await game.engine.publicSnapshot(room)).activeClue?.link?.hintVisible).toBe(false)
+      room = await game.engine.goBack(room)
+      const updated = vi.fn()
+      game.engine.on('roomUpdated', updated)
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(updated).not.toHaveBeenCalled()
+      expect(room.state.linkHintDeadline).toBeUndefined()
+    } finally { game.engine.dispose() }
+  })
+
+  it('excludes Link and Final Question from specials and rejects excess selections', async () => {
+    const game = await createLinkGame(10, ['double_points'])
+    try {
+      const room = await game.engine.startGame(game.room)
+      expect(room.state.specialAssignments).toEqual({ [game.clueIds[1]!]: 'double_points' })
+      const link = await game.engine.selectClue(room, game.clueIds[0]!)
+      expect(link.state.phase).toBe('ACCEPTING_ANSWERS')
+      expect((await game.engine.publicSnapshot(link)).activeClue?.special).toBeUndefined()
+      const excess = await createLinkGame(10, ['double_points', 'speed_round'])
+      try { await expect(excess.engine.startGame(excess.room)).rejects.toThrow('eligible ordinary, non-Link') }
+      finally { excess.engine.dispose() }
+    } finally { game.engine.dispose() }
+  })
+
+  it('preserves the pending hint through interrupted-game recovery and a later resume', async () => {
+    vi.useFakeTimers()
+    const game = await createLinkGame()
+    let recovered: GameEngine | undefined
+    try {
+      let room = await game.engine.startGame(game.room)
+      room = await game.engine.selectClue(room, game.clueIds[0]!)
+      await vi.advanceTimersByTimeAsync(3_000)
+      game.engine.dispose()
+      recovered = new GameEngine(game.database, game.rooms, 'http://127.0.0.1:3000')
+      expect(await recovered.recoverInterruptedGames()).toBe(1)
+      room = (await game.rooms.getById(room.id))!
+      expect(room.state.linkHintRemainingMs).toBe(7_000)
+      await vi.advanceTimersByTimeAsync(20_000)
+      expect((await recovered.publicSnapshot(room)).activeClue?.link?.hintVisible).toBe(false)
+      room = await recovered.resume(room)
+      await vi.advanceTimersByTimeAsync(7_000)
+      expect((await recovered.publicSnapshot(room)).activeClue?.link?.hintVisible).toBe(true)
+    } finally { game.engine.dispose(); recovered?.dispose() }
+  })
+
+  it('reveals normally before a long hint delay and cancels its pending notification', async () => {
+    vi.useFakeTimers()
+    const game = await createLinkGame(300)
+    try {
+      let room = await game.engine.startGame(game.room)
+      room = await game.engine.selectClue(room, game.clueIds[0]!)
+      room = await game.engine.closeAnswers(room)
+      room = await game.engine.reveal(room)
+      expect((await game.engine.publicSnapshot(room)).activeClue).toMatchObject({
+        prompt: 'Name the song', answer: 'Dancing Queen', link: { hintVisible: true },
+      })
+      const updated = vi.fn()
+      game.engine.on('roomUpdated', updated)
+      await vi.advanceTimersByTimeAsync(300_000)
+      expect(updated).not.toHaveBeenCalled()
+    } finally { game.engine.dispose() }
+  })
+
+  it('keeps Final Link hidden during wagering and exposes a zero-delay hint only after opening', async () => {
+    const game = await createLinkGame(0, [], true)
+    try {
+      let room = await game.engine.startGame(game.room)
+      room = await game.engine.startFinalRound(room)
+      expect((await game.engine.publicSnapshot(room)).activeClue).toBeUndefined()
+      await game.engine.submitFinalWager(room, game.playerOne.id, 0)
+      room = (await game.rooms.getById(room.id))!
+      await game.engine.submitFinalWager(room, game.playerTwo.id, 0)
+      room = (await game.rooms.getById(room.id))!
+      room = await game.engine.startFinalQuestion(room)
+      expect((await game.engine.publicSnapshot(room)).activeClue).toMatchObject({
+        prompt: 'Name the song', link: { hintVisible: true }, special: undefined,
+      })
+    } finally { game.engine.dispose() }
+  })
+})
 describe('game engine', () => {
   it('builds paired snapshots once without exposing host configuration or unrevealed answers', async () => {
     const game = await createGame()

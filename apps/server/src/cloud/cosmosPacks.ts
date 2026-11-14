@@ -2,6 +2,7 @@ import { createId } from '../ids.js'
 import { DomainError, type MediaOwner, type PackDocument, type PackInput, type PackStore,
   type PackSummary, type PageRequest, type RoomRef } from '../domain.js'
 import { CosmosMedia } from './cosmosMedia.js'
+import { clueMediaIds, getLinkConfig } from '../link.js'
 import { conflict, digest, document, etag, LIBRARY_PK, now, pages, remove, replace,
   status, writeChunks, type CosmosAccess, type Document } from './cosmosIo.js'
 
@@ -22,14 +23,14 @@ const revisionId = (id: string, revision: string) => `revision:${id}:${revision}
 const clueId = (id: string, revision: string, clue: string) => `packclue:${id}:${revision}:${clue}`
 export const pinId = (ref: RoomRef) => `pin:${ref.id}:${ref.generation}`
 function mediaIds(pack: PackDocument): string[] {
-  return [...new Set(pack.categories.flatMap((category) => category.clues.flatMap((clue) =>
-    [clue.mediaAssetId, clue.revealMediaAssetId].filter((id): id is string => Boolean(id)))))]
+  return [...new Set(pack.categories.flatMap((category) => category.clues.flatMap(clueMediaIds)))]
 }
 function summary(pack: PackDocument): PackSummary {
   const clues = pack.categories.flatMap(({ clues }) => clues)
   return { id: pack.id, title: pack.title, description: pack.description, status: pack.status,
     categoryCount: pack.categories.length, clueCount: clues.length,
     ordinaryClueCount: clues.filter((clue) => !clue.finalQuestion).length,
+    specialEligibleClueCount: clues.filter((clue) => !clue.finalQuestion && !getLinkConfig(clue)).length,
     createdAt: pack.createdAt, updatedAt: pack.updatedAt }
 }
 export class CosmosPacks implements PackStore {
@@ -53,7 +54,9 @@ export class CosmosPacks implements PackStore {
       { field: 'kind', value: 'pack' }, { field: 'deleting', value: false },
       ...(!includeArchived ? [{ field: 'summary.status', op: '!=' as const, value: 'archived' }] : []),
     ], order: [{ field: 'summary.updatedAt', descending: true }] }, request)
-    return { ...result, items: result.items.map((doc) => doc.summary) }
+    return { ...result, items: result.items.map((doc) => ({
+      ...doc.summary, specialEligibleClueCount: doc.summary.specialEligibleClueCount ?? doc.summary.ordinaryClueCount,
+    })) }
   }
   async get(id: string): Promise<PackDocument | undefined> {
     const header = await this.header(id)

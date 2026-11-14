@@ -45,8 +45,12 @@ export function clueFromDraft(categories: PreviewDraftCategory[], clueKey: strin
     type: draft.type,
     boardValue: draft.boardValue,
     prompt: draft.prompt,
+    link: config.link ? {
+      mediaUrls: config.link.mediaAssetIds.map((id) => id ? mediaStreamUrl(id) : null),
+      hintVisible: true,
+    } : undefined,
     timerSeconds: draft.timerSeconds,
-    mediaUrl: draft.mediaAssetId ? mediaStreamUrl(draft.mediaAssetId) : undefined,
+    mediaUrl: !config.link && draft.mediaAssetId ? mediaStreamUrl(draft.mediaAssetId) : undefined,
     revealMediaUrl: draft.revealMediaAssetId ? mediaStreamUrl(draft.revealMediaAssetId) : undefined,
     mediaPlayback: config.mediaPlayback,
     revealMediaPlayback: config.revealMediaPlayback,
@@ -62,5 +66,6 @@ export function clueFromDraft(categories: PreviewDraftCategory[], clueKey: strin
     answer: revealed && (typeof answer === 'number' || answer?.trim()) ? answer : undefined,
   }
   const clue = cluesFromSnapshot({ board: [], usedClueIds: [], activeClue })[0]
-  return clue ? { clue, categoryTitle: category.title || 'Untitled category', finalQuestion: draft.finalQuestion } : null
+  return clue ? { clue, categoryTitle: category.title || 'Untitled category', finalQuestion: draft.finalQuestion,
+    hintDelaySeconds: config.link?.hintDelaySeconds } : null
 }

@@ -240,6 +240,13 @@ export function HostRoomPage() {
                 </p>
               ) : null}
               <p>{currentClue.prompt}</p>
+              {currentClue.link ? <>
+                <p className={styles.noticeText}>{currentClue.link.hintVisible
+                  ? 'Link hint is visible to players.' : 'Link hint is still hidden from players.'}</p>
+                <Button variant="secondary" disabled={Boolean(pendingCommand) || game.connection !== 'connected' ||
+                  !['ACCEPTING_ANSWERS', 'FINAL_QUESTION', 'ANSWERS_CLOSED'].includes(phase)}
+                  onClick={() => run('replay')}>Replay Link audio</Button>
+              </> : null}
               {phase !== 'CLUE_READY' ? (
                 <GameTimer
                   variant="line"

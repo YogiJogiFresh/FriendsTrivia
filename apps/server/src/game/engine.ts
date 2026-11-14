@@ -5,6 +5,7 @@ import type { AttemptRef, GameClue, RoundOutcome, RoundResult, ScoreAward, Submi
 import { domainFrom, type DomainSource } from '../sqliteStore.js'
 import { createId } from '../ids.js'
 import { isRevealGif } from '../gifs.js'
+import { getLinkConfig } from '../link.js'
 import type { RoomRepository } from '../repositories/rooms.js'
 import type { GamePhase, RoomRecord, RoomState, SpecialType } from './types.js'
 import { diagnosticTime } from '../diagnostics.js'
@@ -47,10 +48,13 @@ export class GameEngine extends EventEmitter {
   }
   private stopped = false
   private readonly timers = new Map<string, NodeJS.Timeout>();
+  private readonly hintTimers = new Map<string, NodeJS.Timeout>()
   dispose(): void {
     this.stopped = true
     for (const timer of this.timers.values()) clearTimeout(timer)
     this.timers.clear()
+    for (const timer of this.hintTimers.values()) clearTimeout(timer)
+    this.hintTimers.clear()
   }
   runRoom<T>(roomId: string, action: () => Promise<T>, operationId?: string): Promise<T> {
     return this.rooms.runRoom(roomId, action, operationId)
@@ -87,7 +91,7 @@ export class GameEngine extends EventEmitter {
     let cursor: string | undefined
     do {
       const page = await this.rooms.store.forPack(packId, { ...(cursor ? { cursor } : {}), limit: 100 })
-      page.items.forEach(({ id }) => this.clearTimer(id))
+      page.items.forEach(({ id }) => { this.clearTimer(id); this.clearHintTimer(id) })
       cursor = page.cursor
     } while (cursor)
   }
@@ -139,6 +143,14 @@ export class GameEngine extends EventEmitter {
       const clueConfig = clue
         ? (clue.config)
         : undefined
+      const link = clue ? getLinkConfig(clue) : undefined
+      const contentPhase = room.state.phase === 'PAUSED' ? room.state.previousPhase : room.state.phase
+      const hintVisible = !link || ['REVEAL', 'LEADERBOARD', 'FINISHED'].includes(contentPhase ?? '') ||
+        (room.state.phase === 'PAUSED'
+          ? room.state.linkHintRemainingMs === 0
+          : Boolean(room.state.linkHintDeadline && Date.parse(room.state.linkHintDeadline) <= Date.now()))
+      const mediaUrl = (id: string) =>
+        `/api/media/${encodeURIComponent(id)}/stream${this.scopeMediaToRoom ? `?roomCode=${encodeURIComponent(room.code)}` : ''}`
       const { players, submissions, answerProgress } = await this.answerState(room, includeHost)
       const publicSnapshot = {
         code: room.code,
@@ -163,10 +175,14 @@ export class GameEngine extends EventEmitter {
             boardValue: visibleClue.boardValue,
             prompt: votingHidden
               ? 'Vote for the player who must answer this clue.'
-              : visibleClue.prompt,
+              : hintVisible ? visibleClue.prompt : 'Listen to the four songs. What links them?',
             timerSeconds: this.effectiveTimerSeconds(room, visibleClue),
-            special: room.state.specialAssignments?.[visibleClue.id],
-            mediaUrl: !votingHidden && visibleClue.mediaAssetId
+            special: link || visibleClue.finalQuestion ? undefined : room.state.specialAssignments?.[visibleClue.id],
+            link: link && !votingHidden ? {
+              mediaUrls: link.mediaAssetIds.map((id) => id ? mediaUrl(id) : null),
+              hintVisible,
+            } : undefined,
+            mediaUrl: !link && !votingHidden && visibleClue.mediaAssetId
               ? `/api/media/${visibleClue.mediaAssetId}/stream${this.scopeMediaToRoom ? `?roomCode=${encodeURIComponent(room.code)}` : ''}`
               : undefined,
             revealMediaUrl: !votingHidden && visibleClue.revealMediaAssetId
@@ -174,7 +190,7 @@ export class GameEngine extends EventEmitter {
               : undefined,
             mediaPlayback: !votingHidden ? clueConfig?.mediaPlayback : undefined,
             revealMediaPlayback: !votingHidden ? clueConfig?.revealMediaPlayback : undefined,
-            questionGif: !votingHidden &&
+            questionGif: !votingHidden && hintVisible &&
               ['CLUE_READY', 'ACCEPTING_ANSWERS', 'FINAL_QUESTION', 'ANSWERS_CLOSED'].includes(
                 room.state.phase === 'PAUSED' ? room.state.previousPhase ?? '' : room.state.phase) &&
               isRevealGif(clueConfig?.questionGif) && clueConfig.questionGif.provider === 'url'
@@ -208,7 +224,7 @@ export class GameEngine extends EventEmitter {
       const host = includeHost ? {
         ...publicSnapshot,
         activeClue: clue
-          ? { ...publicSnapshot.activeClue, config: clue.config }
+          ? { ...publicSnapshot.activeClue, prompt: clue.prompt, config: clue.config }
           : undefined,
         submissions: submissions.map(({ playerId, elapsedMs, receivedAt }) => ({ playerId, elapsedMs, receivedAt })),
       } : undefined
@@ -225,9 +241,10 @@ export class GameEngine extends EventEmitter {
       if (specials.includes('forced_player') && playerCount < 2) {
         throw new Error('Forced Player requires at least two players')
       }
-      const clueIds = (await this.rooms.store.board(room.ref)).map(({ clueId }) => clueId)
+      const clueIds = (await this.rooms.store.board(room.ref))
+        .filter(({ specialEligible }) => specialEligible !== false).map(({ clueId }) => clueId)
       if (clueIds.length < specials.length) {
-        throw new Error(`This pack needs at least ${specials.length} ordinary clues for the selected specials`)
+        throw new Error(`This pack needs at least ${specials.length} eligible ordinary, non-Link clues for the selected specials`)
       }
       for (let index = clueIds.length - 1;index > 0;index -= 1) {
         const swapIndex = randomInt(index + 1);
@@ -253,6 +270,9 @@ export class GameEngine extends EventEmitter {
         attempt: (room.state.attempt ?? 0) + 1,
         specialVotes: {},
         forcedPlayerId: undefined,
+        specialAssignments: getLinkConfig(clue)
+          ? Object.fromEntries(Object.entries(room.state.specialAssignments ?? {}).filter(([id]) => id !== clueId))
+          : room.state.specialAssignments,
       }, 'active'))
       if (this.activeSpecial(readyRoom) === 'forced_player') {
         return (await this.transition(readyRoom, 'SPECIAL_VOTE', {}, 'active'))
@@ -397,6 +417,7 @@ export class GameEngine extends EventEmitter {
         window: (room.state.window ?? 0) + 1,
         deadline: new Date(openedAtMs + timerSeconds * 1000).toISOString(),
         startedAt: new Date(openedAtMs).toISOString(),
+        ...this.startHint(clue, openedAtMs),
       }, 'active'))
       this.scheduleClose(updated, timerSeconds * 1000)
       return updated
@@ -418,6 +439,7 @@ export class GameEngine extends EventEmitter {
         window: (room.state.window ?? 0) + 1,
         deadline: new Date(openedAtMs + timerSeconds * 1000).toISOString(),
         startedAt: new Date(openedAtMs).toISOString(),
+        ...this.startHint(clue, openedAtMs),
       }, 'active'))
       this.scheduleClose(roomAfter, timerSeconds * 1000)
       return roomAfter
@@ -510,6 +532,7 @@ export class GameEngine extends EventEmitter {
       if (!room.state.activeClueId)
         throw new Error('No clue is selected')
       this.clearTimer(room.id)
+      this.clearHintTimer(room.id)
       await this.clearClueAttempts(room, true)
       const updated = (await this.rooms.saveState(room.id, {
         ...room.state,
@@ -523,6 +546,8 @@ export class GameEngine extends EventEmitter {
         finalRound: false,
         specialVotes: undefined,
         forcedPlayerId: undefined,
+        linkHintDeadline: undefined,
+        linkHintRemainingMs: undefined,
       }, 'active', room.stateVersion))
       this.emitUpdate(room.id)
       return updated
@@ -565,9 +590,11 @@ export class GameEngine extends EventEmitter {
         revealedAt: undefined,
         previousPhase: undefined,
         remainingMs: undefined,
+        ...this.startHint(clue, openedAtMs),
       }, 'active', room.stateVersion))
       if (!forcedPlayer)
         this.scheduleClose(updated, timerSeconds * 1000)
+      this.scheduleHint(updated)
       this.emitUpdate(room.id)
       return updated
 
@@ -681,6 +708,7 @@ export class GameEngine extends EventEmitter {
     return this.mutate(room, async (room) => {
 
       this.clearTimer(room.id)
+      this.clearHintTimer(room.id)
       if (room.status === 'finished' || room.status === 'abandoned')
         return room
       const updated = (await this.rooms.saveState(room.id, {
@@ -690,6 +718,8 @@ export class GameEngine extends EventEmitter {
         deadline: undefined,
         previousPhase: undefined,
         remainingMs: undefined,
+        linkHintDeadline: undefined,
+        linkHintRemainingMs: undefined,
       }, 'abandoned', room.stateVersion))
       this.emitUpdate(room.id)
       return updated
@@ -716,7 +746,19 @@ export class GameEngine extends EventEmitter {
 
       assertTransition(room.state.phase, phase)
       const state = { ...room.state, ...patch, phase }
+      if (phase === 'PAUSED' && room.state.linkHintDeadline) {
+        state.linkHintRemainingMs = Math.max(0, Date.parse(room.state.linkHintDeadline) - Date.now())
+        state.linkHintDeadline = undefined
+      } else if (room.state.phase === 'PAUSED' && room.state.linkHintRemainingMs !== undefined) {
+        state.linkHintDeadline = new Date(Date.now() + room.state.linkHintRemainingMs).toISOString()
+        state.linkHintRemainingMs = undefined
+      }
+      if (!['ACCEPTING_ANSWERS', 'FINAL_QUESTION', 'ANSWERS_CLOSED', 'PAUSED'].includes(phase)) {
+        state.linkHintDeadline = undefined
+        state.linkHintRemainingMs = undefined
+      }
       const updated = (await this.rooms.saveState(room.id, state, status, room.stateVersion))
+      this.scheduleHint(updated)
       this.emitUpdate(room.id)
       return updated
 
@@ -933,12 +975,14 @@ export class GameEngine extends EventEmitter {
     })
   }
   private activeSpecial(room: RoomRecord): SpecialType | undefined {
+    if (room.state.finalRound) return undefined
     return room.state.activeClueId
       ? room.state.specialAssignments?.[room.state.activeClueId]
       : undefined
   }
   private effectiveTimerSeconds(room: RoomRecord, clue: ClueRow): number {
     const timerSeconds = clue.timerSeconds || room.settings.timerSeconds
+    if (getLinkConfig(clue) || clue.finalQuestion) return timerSeconds
     return room.state.specialAssignments?.[clue.id] === 'speed_round'
       ? Math.max(5, Math.ceil(timerSeconds / 2))
       : timerSeconds
@@ -1119,6 +1163,45 @@ export class GameEngine extends EventEmitter {
       }, remainingMs)
       timer.unref()
       this.timers.set(room.id, timer)
+    })
+  }
+  private startHint(clue: ClueRow, openedAtMs: number): Partial<RoomState> {
+    const link = getLinkConfig(clue)
+    return {
+      linkHintDeadline: link ? new Date(openedAtMs + link.hintDelaySeconds * 1000).toISOString() : undefined,
+      linkHintRemainingMs: undefined,
+    }
+  }
+  private clearHintTimer(roomId: string): void {
+    this.rooms.afterCommit(() => {
+      clearTimeout(this.hintTimers.get(roomId))
+      this.hintTimers.delete(roomId)
+    })
+  }
+  private scheduleHint(room: RoomRecord): void {
+    this.rooms.afterCommit(() => {
+      clearTimeout(this.hintTimers.get(room.id))
+      this.hintTimers.delete(room.id)
+      const deadline = room.state.linkHintDeadline
+      if (this.stopped || !deadline ||
+        !['ACCEPTING_ANSWERS', 'FINAL_QUESTION', 'ANSWERS_CLOSED'].includes(room.state.phase)) return
+      const remaining = Date.parse(deadline) - Date.now()
+      if (remaining <= 0) return
+      const timer = setTimeout(() => {
+        this.hintTimers.delete(room.id)
+        if (this.stopped) return
+        void this.runRoom(room.id, async () => {
+          const latest = await this.rooms.getById(room.id)
+          if (latest?.ref.generation === room.ref.generation &&
+            latest.state.activeClueId === room.state.activeClueId && latest.state.attempt === room.state.attempt &&
+            latest.state.linkHintDeadline === deadline &&
+            ['ACCEPTING_ANSWERS', 'FINAL_QUESTION', 'ANSWERS_CLOSED'].includes(latest.state.phase)) {
+            this.emitUpdate(room.id)
+          }
+        }).catch((error: unknown) => this.emit('operationFailed', error))
+      }, remaining)
+      timer.unref()
+      this.hintTimers.set(room.id, timer)
     })
   }
   private clearTimer(roomId: string): void {

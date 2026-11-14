@@ -105,8 +105,9 @@ clue is selected. **Double Points** doubles positive awards, **Double or Nothing
 awards but deducts the clue value for incorrect or missing answers, and **Speed Round** halves the
 answer timer. **Forced Player** lets everyone nominate another player as the sole answerer; that
 player earns the full clue value for a correct answer, while every other player earns it if the
-answer is wrong or missing. Each enabled special appears on one different ordinary clue; Final
-Question is never eligible.
+answer is wrong or missing. Each enabled special appears on one different ordinary, non-Link clue;
+Link clues and Final Question are never eligible. The pack needs at least as many eligible clues
+as selected specials.
 
 The host computer's firewall must allow inbound TCP traffic on port `3000`. Some guest Wi-Fi networks isolate devices from one another; use a normal private network or personal hotspot if phones cannot reach the printed LAN URL.
 
@@ -120,12 +121,27 @@ Packs contain ordered categories and clues:
 - `music_free_text`: local audio, a correct answer, and accepted variants.
 - `price_slider`: target price, minimum, maximum, step, and display prefix.
 
-Keep packs in draft status until every music clue has a playable media asset and every clue has a valid answer. Exported manifests contain metadata only, not audio files.
+The editor's **Link · Four songs** option uses free-text answers with four distinct Media Library
+clips. Select the four songs in playback order and enter a delayed hint. The hint delay defaults
+to 10 seconds (whole seconds from 0 to 300). Players can answer immediately; the text and optional
+question GIF appear on Display/player screens when the delay expires. Link can also be the Final
+Question, starting only after wagering.
+
+Display loops songs 1 through 4 until **Reveal**, including after answers close. Pause freezes
+playback and the hint delay; Replay Link audio restarts song 1 without resetting either the hint
+or answer clock. Reveal uses its separate song/GIF settings. Audio loading does not postpone the
+game clock. Editor previews are manual and show the hint immediately with its configured delay.
+
+Keep unfinished packs in draft status. Ordinary music attachments are optional; Link needs four
+different songs, a hint and a valid free-text answer before saving. Exported manifests contain
+metadata only, not audio files.
 
 Use **Export pack + songs** to download a portable `.friendstrivia` bundle containing the pack and
 every local song referenced by its clues or answer reveals. On another FriendsTrivia computer,
 choose **Import pack** and select that bundle; its songs are copied into the local media library
 and all clue references are restored. Only `.friendstrivia` bundles are accepted for pack imports.
+Link-containing bundles require a Link-capable version of FriendsTrivia (bundle version 3);
+older version-2 bundles remain importable.
 
 ## Data and backup
 

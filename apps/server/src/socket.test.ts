@@ -22,18 +22,25 @@ afterEach(async () => {
   vi.restoreAllMocks()
 })
 
-async function fixture(cloud = false, admin = false) {
+async function fixture(cloud = false, admin = false, link = false) {
   const database = openDatabase(':memory:')
   const source = cloud ? await createCosmosStore(new FakeCosmos(), new FakeCosmos()) : database
   const packs = new PackRepository(source)
   const rooms = new RoomRepository(source)
   const pack = await packs.create({ title: 'Socket test' }) as { id: string }
+  const songs = ['link-one', 'link-two', 'link-three', 'link-four']
+  if (link) {
+    for (const id of songs) database.prepare(`INSERT INTO media_assets
+      (id, relative_path, original_name, mime_type, size_bytes) VALUES (?, ?, ?, 'audio/mpeg', 1)`)
+      .run(id, `songs/${id}.mp3`, `${id}.mp3`)
+  }
   const saved = await packs.replace(pack.id, {
     title: 'Socket test', status: 'ready',
     categories: [{
       title: 'Prices', clues: [{
-        type: 'price_slider', boardValue: 100, prompt: 'Price?',
-        config: { correctPrice: 50, min: 0, max: 100 },
+        type: link ? 'music_free_text' : 'price_slider', boardValue: 100, prompt: link ? 'Hidden link hint' : 'Price?',
+        config: link ? { correctAnswer: 'Connection', link: { mediaAssetIds: songs, hintDelaySeconds: 10 } }
+          : { correctPrice: 50, min: 0, max: 100 },
       }]
     }],
   }) as { categories: Array<{ clues: Array<{ id: string }> }> }
@@ -95,6 +102,23 @@ async function disconnected(game: Awaited<ReturnType<typeof fixture>>, playerId:
 }
 
 describe('socket persistence acknowledgements', () => {
+  it('replays a Link after answers close without changing its hint clock, attempt or answer deadline', async () => {
+    const game = await fixture(false, false, true)
+    await game.rooms.join(game.room, 'Link player')
+    let room = await game.engine.startGame(game.room)
+    room = await game.engine.selectClue(room, game.clueId)
+    room = await game.engine.closeAnswers(room)
+    const before = structuredClone(room.state)
+    const display = await game.client()
+    await emit(display, 'room:watch', { code: room.code })
+    const replay = vi.fn()
+    display.on('media:replay', replay)
+    const host = await game.client()
+    expect((await emit(host, 'host:connect', { code: room.code, hostToken: game.hostToken })).ok).toBe(true)
+    expect((await emit(host, 'host:command', { command: 'replay', expectedStateVersion: room.stateVersion })).ok).toBe(true)
+    await vi.waitFor(() => expect(replay).toHaveBeenCalledWith({ clueId: game.clueId }))
+    expect((await game.rooms.getById(room.id))!.state).toEqual(before)
+  })
   it('accepts unlocked same-origin polling without an Origin header', async () => {
     const game = await fixture(false, true)
     const cookie = await game.unlock()

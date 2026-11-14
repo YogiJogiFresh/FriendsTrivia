@@ -16,7 +16,7 @@ export const statements = {
     "sqlite": "DELETE FROM media_assets WHERE id = ?"
   },
   'packList': {
-    "sqlite": "SELECT p.id, p.title, p.description, p.status, p.created_at AS createdAt,\n                p.updated_at AS updatedAt, COUNT(DISTINCT c.id) AS categoryCount,\n                COUNT(q.id) AS clueCount,\n                SUM(CASE WHEN q.is_final = 0 THEN 1 ELSE 0 END) AS ordinaryClueCount\n         FROM packs p\n         LEFT JOIN categories c ON c.pack_id = p.id AND c.archived = 0\n         LEFT JOIN clues q ON q.category_id = c.id AND q.archived = 0\n         WHERE (? = 1 OR p.status != 'archived')\n         GROUP BY p.id\n         ORDER BY p.updated_at DESC"
+    "sqlite": "SELECT p.id, p.title, p.description, p.status, p.created_at AS createdAt,\n                p.updated_at AS updatedAt, COUNT(DISTINCT c.id) AS categoryCount,\n                COUNT(q.id) AS clueCount,\n                SUM(CASE WHEN q.is_final = 0 THEN 1 ELSE 0 END) AS ordinaryClueCount,\n                SUM(CASE WHEN q.is_final = 0 AND json_type(q.config_json, '$.link') IS NULL THEN 1 ELSE 0 END) AS specialEligibleClueCount\n         FROM packs p\n         LEFT JOIN categories c ON c.pack_id = p.id AND c.archived = 0\n         LEFT JOIN clues q ON q.category_id = c.id AND q.archived = 0\n         WHERE (? = 1 OR p.status != 'archived')\n         GROUP BY p.id\n         ORDER BY p.updated_at DESC"
   },
   'packGet': {
     "sqlite": "SELECT * FROM packs WHERE id = ?"
@@ -115,7 +115,7 @@ export const statements = {
     "sqlite": "SELECT id FROM rooms WHERE pack_id = ?"
   },
   'packBoard': {
-    "sqlite": "SELECT c.id AS categoryId, c.title AS categoryTitle, c.position AS categoryPosition,\n                q.id AS clueId, q.board_value AS boardValue, q.position AS cluePosition,\n                q.type AS clueType\n         FROM categories c\n         JOIN clues q ON q.category_id = c.id\n         WHERE c.pack_id = ? AND c.archived = 0 AND q.archived = 0 AND q.is_final = 0\n         ORDER BY c.position, q.position"
+    "sqlite": "SELECT c.id AS categoryId, c.title AS categoryTitle, c.position AS categoryPosition,\n                q.id AS clueId, q.board_value AS boardValue, q.position AS cluePosition,\n                q.type AS clueType, CASE WHEN json_type(q.config_json, '$.link') IS NULL THEN 1 ELSE 0 END AS specialEligible\n         FROM categories c\n         JOIN clues q ON q.category_id = c.id\n         WHERE c.pack_id = ? AND c.archived = 0 AND q.archived = 0 AND q.is_final = 0\n         ORDER BY c.position, q.position"
   },
   'clueWageredPlayers': {
     "sqlite": "SELECT w.player_id AS playerId\n                   FROM final_wagers w\n                   JOIN players p ON p.id = w.player_id\n                   WHERE w.room_id = ? AND w.clue_id = ? AND p.kicked = 0"

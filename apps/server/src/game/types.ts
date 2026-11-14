@@ -38,6 +38,8 @@ export interface RoomState {
   deadline?: string | undefined
   startedAt?: string | undefined
   remainingMs?: number | undefined
+  linkHintDeadline?: string | undefined
+  linkHintRemainingMs?: number | undefined
   revealedAt?: string | undefined
   finalRound?: boolean | undefined
   specialAssignments?: Record<string, SpecialType> | undefined

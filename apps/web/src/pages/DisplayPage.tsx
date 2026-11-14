@@ -7,6 +7,7 @@ import { SPECIAL_DETAILS } from '../data/types'
 import { createAudioPlayback, playbackSettings, playbackFailureMessages } from '../lib/audioPlayback'
 import type { PlaybackState } from '../lib/audioPlayback'
 import { diagnosticsEnabled, mediaIdentity, traceEvent } from '../lib/diagnostics'
+import { completeLinkPlaylist } from '../lib/linkClues'
 import {
   Button,
   Badge,
@@ -94,14 +95,20 @@ export function DisplayPage() {
   const gamePhase = game?.room.phase
   const phaseRef = useRef(gamePhase)
   useLayoutEffect(() => { phaseRef.current = gamePhase }, [gamePhase])
-  const activeMediaUrl = gamePhase === 'REVEAL' ? currentRevealMediaUrl : currentMediaUrl
+  const revealAudio = gamePhase === 'REVEAL'
+  const isLinkAudio = Boolean(currentClue?.link) && !revealAudio
+  const playlist = completeLinkPlaylist(isLinkAudio ? currentClue?.link?.mediaUrls : undefined)
+  const playlistKey = JSON.stringify(playlist ?? null)
+  const activeMediaUrl = revealAudio ? currentRevealMediaUrl : isLinkAudio ? playlist?.[0] : currentMediaUrl
+  const playbackAttempt = isLinkAudio ? `${roomCode}:${game?.room.generation}:${game?.room.attempt}` : ''
   const secondsRemaining = useCountdown(gamePhase === 'ANSWERS_CLOSED' ? undefined : game?.room.deadline,
     gamePhase === 'ANSWERS_CLOSED' ? 0 : game?.room.pausedSeconds ?? currentClue?.timerSeconds ?? 0)
   const audioRef = useRef<HTMLAudioElement>(null)
   const playbackRef = useRef<{ key: string; player: ReturnType<typeof createAudioPlayback> } | null>(null)
   const audioOperation = useRef(0)
-  const revealAudio = gamePhase === 'REVEAL'
-  const { delaySeconds, playCount } = playbackSettings(revealAudio ? currentClue?.revealMediaPlayback : currentClue?.mediaPlayback, revealAudio)
+  const { delaySeconds, playCount } = isLinkAudio
+    ? { delaySeconds: 0, playCount: 0 }
+    : playbackSettings(revealAudio ? currentClue?.revealMediaPlayback : currentClue?.mediaPlayback, revealAudio)
   const [audioReady, setAudioReady] = useState(false)
   const [audioError, setAudioError] = useState<string | null>(null)
   const [audioStatus, setAudioStatus] = useState<PlaybackState | 'buffering'>('idle')
@@ -135,7 +142,7 @@ export function DisplayPage() {
   const getPlayback = useCallback(() => {
     const audio = audioRef.current
     if (!audio || !currentClueId || !activeMediaUrl) return null
-    const key = JSON.stringify([currentClueId, revealAudio, activeMediaUrl, delaySeconds, playCount])
+    const key = JSON.stringify([currentClueId, revealAudio, activeMediaUrl, delaySeconds, playCount, playlistKey, playbackAttempt])
     if (playbackRef.current?.key !== key) {
       playbackRef.current?.player.dispose()
       if (audio.src !== new URL(activeMediaUrl, window.location.href).href || audio.error) {
@@ -148,6 +155,7 @@ export function DisplayPage() {
       playbackRef.current = {
         key,
         player: createAudioPlayback(audio, { delaySeconds, playCount }, {
+          playlist: playlistKey === 'null' ? undefined : JSON.parse(playlistKey) as string[],
           onState: (state, plays) => {
             playbackState.current = state
             setAudioStatus(state)
@@ -167,7 +175,8 @@ export function DisplayPage() {
       }
     }
     return playbackRef.current.player
-  }, [currentClueId, revealAudio, activeMediaUrl, delaySeconds, playCount, setAudioReady, setAudioError, setAudioStatus])
+  }, [currentClueId, revealAudio, activeMediaUrl, delaySeconds, playCount, playlistKey, playbackAttempt,
+    setAudioReady, setAudioError, setAudioStatus])
 
   useEffect(() => {
     const audio = audioRef.current
@@ -184,7 +193,7 @@ export function DisplayPage() {
         readyState: audio.readyState, networkState: audio.networkState,
         buffered: audio.buffered.length ? audio.buffered.end(audio.buffered.length - 1) : 0,
       })
-      if (activeMediaUrl && mediaIdentity(audio.currentSrc) === mediaIdentity(activeMediaUrl) &&
+      if (activeMediaUrl && audio.currentSrc === audio.src &&
         (playbackState.current === 'starting' || playbackState.current === 'playing')) {
         if (event.type === 'waiting' || event.type === 'stalled') setAudioStatus('buffering')
         else if (event.type === 'playing') setAudioStatus('playing')
@@ -219,7 +228,8 @@ export function DisplayPage() {
     if (
       gamePhase === 'ACCEPTING_ANSWERS' ||
       gamePhase === 'FINAL_QUESTION' ||
-      gamePhase === 'REVEAL'
+      gamePhase === 'REVEAL' ||
+      (isLinkAudio && gamePhase === 'ANSWERS_CLOSED')
     ) {
       if (activeMediaUrl) {
         getPlayback()?.resume()
@@ -233,7 +243,7 @@ export function DisplayPage() {
     audio?.pause()
     audio?.removeAttribute('src')
     audio?.load()
-  }, [getPlayback, gamePhase, activeMediaUrl])
+  }, [getPlayback, gamePhase, activeMediaUrl, isLinkAudio])
 
   useEffect(() => {
     const audio = audioRef.current
@@ -250,14 +260,14 @@ export function DisplayPage() {
     const socket = getSocket()
     function replay(payload: { clueId?: string }) {
       if (payload.clueId !== currentClueId ||
-        !['ACCEPTING_ANSWERS', 'FINAL_QUESTION', 'REVEAL'].includes(gamePhase ?? '')) return
+        !['ACCEPTING_ANSWERS', 'FINAL_QUESTION', 'REVEAL', ...(isLinkAudio ? ['ANSWERS_CLOSED'] : [])].includes(gamePhase ?? '')) return
       getPlayback()?.start()
     }
     socket.on('media:replay', replay)
     return () => {
       socket.off('media:replay', replay)
     }
-  }, [currentClueId, gamePhase, getPlayback])
+  }, [currentClueId, gamePhase, getPlayback, isLinkAudio])
 
   async function startAudio() {
     const audio = audioRef.current
@@ -266,7 +276,8 @@ export function DisplayPage() {
     const playingAudio =
       (gamePhase === 'ACCEPTING_ANSWERS' ||
         gamePhase === 'FINAL_QUESTION' ||
-        gamePhase === 'REVEAL') &&
+        gamePhase === 'REVEAL' ||
+        (isLinkAudio && gamePhase === 'ANSWERS_CLOSED')) &&
       Boolean(activeMediaUrl)
     playbackRef.current?.player.dispose()
     playbackRef.current = null
@@ -390,7 +401,10 @@ export function DisplayPage() {
         </div>
       </header>
 
-      {activeMediaUrl && (gamePhase === 'ACCEPTING_ANSWERS' || gamePhase === 'FINAL_QUESTION' || gamePhase === 'REVEAL') ? (
+      {isLinkAudio && !playlist && (gamePhase === 'ACCEPTING_ANSWERS' || gamePhase === 'FINAL_QUESTION' || gamePhase === 'ANSWERS_CLOSED') ?
+        <p role="alert">Link audio needs four available, different songs. Check the clue attachments.</p> : null}
+      {activeMediaUrl && (gamePhase === 'ACCEPTING_ANSWERS' || gamePhase === 'FINAL_QUESTION' || gamePhase === 'REVEAL' ||
+        (isLinkAudio && gamePhase === 'ANSWERS_CLOSED')) ? (
         <div className={styles.audioStatus}>
           <span role="status">{audioError ? 'Song could not play' : audioStatus === 'waiting' ? `Audio delay (${delaySeconds}s configured)`
             : audioStatus === 'starting' || audioStatus === 'idle' ? 'Preparing song...'

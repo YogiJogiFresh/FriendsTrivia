@@ -43,7 +43,8 @@ export function HostHomePage() {
     teams.length <= 8 &&
     new Set(teams.map((team) => team.toLocaleLowerCase())).size === teams.length &&
     teams.every((team) => team.length <= 30)
-  const enoughCluesForSpecials = (selectedPack?.ordinaryClueCount ?? 0) >= specials.length
+  const enoughCluesForSpecials =
+    (selectedPack?.specialEligibleClueCount ?? selectedPack?.ordinaryClueCount ?? 0) >= specials.length
   const canLaunch =
     Boolean(selectedPack) &&
     selectedPack?.status === 'ready' &&
@@ -244,7 +245,7 @@ export function HostHomePage() {
       <details className={styles.setupSection}>
         <summary>Clue specials (optional)</summary>
         <div className={styles.setupSectionBody}>
-          <p>Each enabled special is hidden on one random clue and revealed when that clue starts.</p>
+          <p>Each enabled special is hidden on one random eligible clue. Link clues and Final Questions cannot receive specials.</p>
           <div className={styles.specialOptions}>
             {([
               ['double_points', 'Double Points', 'Every positive award is doubled.'],
@@ -275,7 +276,7 @@ export function HostHomePage() {
           </div>
           {!enoughCluesForSpecials && selectedPack ? (
             <p role="alert" className={styles.specialError}>
-              Select fewer specials or use a pack with at least {specials.length} ordinary clues.
+              Select fewer specials or use a pack with at least {specials.length} ordinary, non-Link clues.
             </p>
           ) : null}
         </div>

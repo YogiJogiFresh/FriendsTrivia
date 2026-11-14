@@ -165,6 +165,12 @@ export function createSqliteStore(database: Persistence | Database.Database): Do
       await db.transaction(async () => {
         const current = await mediaStore.get(ticket.id)
         if (current && current.relativePath !== ticket.asset.relativePath) throw new DomainError('conflict', 'Media changed')
+        raw.prepare(`UPDATE clues SET config_json = json_set(config_json, '$.link.mediaAssetIds',
+          (SELECT json_group_array(CASE WHEN value = ? THEN NULL ELSE value END)
+           FROM json_each(clues.config_json, '$.link.mediaAssetIds')))
+          WHERE json_type(config_json, '$.link.mediaAssetIds') = 'array'
+            AND EXISTS (SELECT 1 FROM json_each(clues.config_json, '$.link.mediaAssetIds') WHERE value = ?)`)
+          .run(ticket.id, ticket.id)
         await db.statement('mediaDelete').run(ticket.id)
         raw.prepare('DELETE FROM media_operations WHERE id = ?').run(ticket.operationId)
       })
@@ -207,7 +213,10 @@ export function createSqliteStore(database: Persistence | Database.Database): Do
       async loadPlayer(ref, id) { await requireRef(ref); const row = await db.statement('playerGet').get(id) as PlayerRow | undefined; return row?.room_id === ref.id ? player(row) : undefined },
       async findPlayer(id) { const row = await db.statement('playerGet').get(id) as PlayerRow | undefined; return row ? player(row) : undefined },
       async listPlayers(ref) { await requireRef(ref); return (await db.statement('roomPlayers').all(ref.id) as PlayerRow[]).map(player) },
-      async board(ref) { return await db.statement('packBoard').all((await requireRef(ref)).packId) as BoardEntry[] },
+      async board(ref) {
+        const rows = await db.statement('packBoard').all((await requireRef(ref)).packId) as Array<Omit<BoardEntry, 'specialEligible'> & { specialEligible: number }>
+        return rows.map((row) => ({ ...row, specialEligible: Boolean(row.specialEligible) }))
+      },
       async clue(ref, id) {
         const current = await requireRef(ref)
         if (!await db.statement('clueBelongsToPack').get(id, current.packId)) return undefined

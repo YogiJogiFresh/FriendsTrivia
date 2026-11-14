@@ -45,7 +45,7 @@ export interface MediaStore {
 }
 export interface PackSummary {
   id: string; title: string; description: string; status: 'draft' | 'ready' | 'archived'
-  categoryCount: number; clueCount: number; ordinaryClueCount: number; createdAt: string; updatedAt: string
+  categoryCount: number; clueCount: number; ordinaryClueCount: number; specialEligibleClueCount: number; createdAt: string; updatedAt: string
 }
 export interface PackInput {
   title: string; description?: string; status?: PackSummary['status']; defaultSettings?: unknown
@@ -78,6 +78,7 @@ export interface GameClue {
 export interface BoardEntry {
   categoryId: string; categoryTitle: string; categoryPosition: number; clueId: string
   boardValue: number; cluePosition: number; clueType: GameClue['type']
+  specialEligible?: boolean
 }
 export interface Submission {
   id: string; playerId: string; answer: unknown; elapsedMs: number; receivedAt: string

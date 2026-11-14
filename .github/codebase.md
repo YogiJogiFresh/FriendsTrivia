@@ -3,7 +3,7 @@
 ## Purpose and current capabilities
 
 FriendsTrivia runs hosted party games with a host, player devices, and shared
-displays. Clues include music multiple choice/free text and price sliders.
+displays. Clues include music multiple choice/free text, Link four-song clues and price sliders.
 The project includes a React web app, Fastify/Socket.IO server, shared game
 contracts/scoring, local and Azure storage modes, and an Electron desktop host.
 
@@ -94,6 +94,15 @@ Media routes and storage modules handle streaming/ranges and storage-specific
 operations. Pack bundle imports/exports use route admission, spooling, and worker
 codec execution; recovery/cleanup has its own lifecycle in `storage\operations.ts`.
 Web audio helpers separate levels, snippets/encoding, playback, and preparation.
+
+Link is a free-text configuration mode (`config.link`), not a new stored clue type.
+Server `link.ts` owns its validation/media-reference helpers; pack claims and bundle
+version-3 remapping include all four songs. Link and Final Question are excluded
+from special eligibility. `game\engine.ts` maintains an independent server-gated
+hint deadline through answering/closed phases and pause/recovery; hint text and
+question GIFs stay out of public snapshots until due. Web `audioPlayback.ts`
+reuses the existing controller for ordered loops, while `lib\linkClues.ts` handles
+complete playlists and current-draft reference replacements.
 
 ## Storage, configuration, and integrations
 

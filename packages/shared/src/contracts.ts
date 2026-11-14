@@ -199,9 +199,17 @@ const multipleChoiceShape = {
   correctChoiceId: StableKeySchema,
 } as const
 
+export const LinkConfigSchema = z.object({
+  mediaAssetIds: z.array(EntityIdSchema).length(4)
+    .refine((ids) => new Set(ids).size === 4, 'Link songs must be distinct'),
+  hintDelaySeconds: z.number().finite().int().min(0).max(300),
+}).strict()
+export type LinkConfig = z.infer<typeof LinkConfigSchema>
+
 const freeTextShape = {
   acceptedAnswers: z.array(trimmedString(1, 200)).min(1).max(30),
   displayAnswer: trimmedString(1, 200).optional(),
+  config: z.object({ link: LinkConfigSchema.optional() }).strict().optional(),
 } as const
 
 export const PriceSliderSchema = z
@@ -599,6 +607,10 @@ export const ActivePublicClueSchema = z.discriminatedUnion('type', [
     .object({
       ...activeClueCommonShape,
       type: z.literal('MUSIC_FREE_TEXT'),
+      link: z.object({
+        mediaUrls: z.array(z.string().url().nullable()).length(4),
+        hintVisible: z.boolean(),
+      }).strict().optional(),
       mediaUrl: z.string().url().optional(),
       revealMediaUrl: z.string().url().optional(),
       startOffsetSeconds: z.number().finite().nonnegative(),

@@ -8,6 +8,7 @@ let stopCurrentPreview: (() => void) | undefined
 
 interface AudioPreviewProps {
   src: string
+  playlist?: readonly string[]
   label: string
   settings?: AudioPlaybackSettings
   reveal?: boolean
@@ -17,27 +18,33 @@ interface AudioPreviewProps {
 export function AudioPreview(props: AudioPreviewProps) {
   const settings = playbackSettings(props.settings, props.reveal)
   return props.active === false ? null : (
-    <AudioPreviewPlayer key={`${props.src}-${settings.delaySeconds}-${settings.playCount}`} {...props} />
+    <AudioPreviewPlayer key={JSON.stringify([props.src, props.playlist, settings.delaySeconds, settings.playCount])} {...props} />
   )
 }
 
-function AudioPreviewPlayer({ src, label, settings: input, reveal = false, active = true }: AudioPreviewProps) {
+function AudioPreviewPlayer({ src, playlist, label, settings: input, reveal = false, active = true }: AudioPreviewProps) {
   const settings = playbackSettings(input, reveal)
   const { delaySeconds, playCount } = settings
   const audioRef = useRef<HTMLAudioElement>(null)
+  // The wrapper remounts this player whenever the ordered source values change.
+  const playlistRef = useRef(playlist)
   const playbackRef = useRef<ReturnType<typeof createAudioPlayback> | null>(null)
   const [state, setState] = useState<PlaybackState>('idle')
   const [plays, setPlays] = useState(0)
+  const [track, setTrack] = useState(0)
   const [failed, setFailed] = useState(false)
   const [position, setPosition] = useState(0)
   const [duration, setDuration] = useState(0)
   const valid = validPlayback(settings)
+  const canSeek = Number.isFinite(duration) && duration > 0
 
   useEffect(() => {
     const audio = audioRef.current
     if (!audio || !active || !valid) return
     audio.src = src
     const playback = createAudioPlayback(audio, { delaySeconds, playCount }, {
+      playlist: playlistRef.current,
+      onTrack: (index) => { setTrack(index); setPosition(0); setDuration(0) },
       onState: (next, count) => { setState(next); setPlays(count) },
       onError: () => setFailed(true),
     })
@@ -74,14 +81,16 @@ function AudioPreviewPlayer({ src, label, settings: input, reveal = false, activ
           onClick={() => playbackRef.current?.pause()}>Pause</Button>
         <Button variant="ghost" onClick={() => playbackRef.current?.stop()}>Stop</Button>
       </div>
-      {Number.isFinite(duration) && duration > 0 ? (
-        <input type="range" min={0} max={duration} step={0.1} value={Math.min(position, duration)}
+      {playlist || canSeek ? (
+        <input type="range" min={0} max={canSeek ? duration : 1} step={0.1}
+          value={canSeek ? Math.min(position, duration) : 0} disabled={!canSeek}
           aria-label={`${label} position`} onChange={(event) => {
             if (audioRef.current) audioRef.current.currentTime = event.target.valueAsNumber
             setPosition(event.target.valueAsNumber)
           }} />
       ) : null}
-      <span role="status" className={styles.status}>
+      <span role="status" className={playlist ? `${styles.status} ${styles.playlistStatus}` : styles.status}>
+        {playlist ? `Track ${track + 1} of ${playlist.length}. ` : ''}
         {state === 'starting' ? 'Preparing audio...'
           : state === 'waiting' ? `Waiting ${settings.delaySeconds} seconds before playback.`
           : state === 'playing' ? `Playing ${plays}${settings.playCount ? ` of ${settings.playCount}` : ' (looping)'}.`

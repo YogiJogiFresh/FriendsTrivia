@@ -5,12 +5,54 @@ import { PackRepository } from '../repositories/packs.js'
 import { RoomRepository } from '../repositories/rooms.js'
 import { GameEngine } from '../game/engine.js'
 import { registerPackRoutes } from './packs.js'
+import { domainFrom } from '../sqliteStore.js'
+import { MediaRepository } from '../repositories/media.js'
 const cleanups: Array<() => Promise<void> | void> = []
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0))
     await cleanup()
 })
 describe('pack deletion', () => {
+  it('preserves Link saves, validates existing songs, and nulls deleted slots across archived clues', async () => {
+    const database = openDatabase(':memory:')
+    cleanups.push(() => { database.close() })
+    const store = domainFrom(database), packs = new PackRepository(database), media = new MediaRepository(database)
+    const ids: string[] = []
+    for (let index = 0; index < 4; index++) ids.push((await media.create({
+      relativePath: `songs\\link-${index}.mp3`, originalName: `link-${index}.mp3`, mimeType: 'audio/mpeg', sizeBytes: 10,
+    })).id)
+    const pack = await packs.create({ title: 'Links' })
+    const config = { correctAnswer: 'Connection', acceptedAnswers: ['Connection'], link: { mediaAssetIds: ids, hintDelaySeconds: 10 } }
+    const input = { title: 'Links', status: 'ready' as const, categories: [{ title: 'Links', clues: [
+      { type: 'music_free_text', boardValue: 100, prompt: 'Connection?', config },
+      { type: 'music_free_text', boardValue: 200, prompt: 'Ordinary?', config: { correctAnswer: 'Answer' } },
+      { type: 'music_free_text', boardValue: 300, prompt: 'Final?', finalQuestion: true, config: { correctAnswer: 'Answer' } },
+    ] }] }
+    const saved = (await packs.replace(pack.id, input))!
+    expect(saved.categories[0]?.clues[0]?.config).toEqual(config)
+    expect((await packs.list())[0]).toMatchObject({ ordinaryClueCount: 2, specialEligibleClueCount: 1 })
+    const rooms = new RoomRepository(database)
+    const { room } = await rooms.create(pack.id, { timerSeconds: 30, speedBonusMax: 0, priceRankPercentages: [1], uniqueNicknames: true }, 4)
+    expect((await store.rooms.board(room.ref)).map((entry) => entry.specialEligible)).toEqual([false, true])
+    const invalid = structuredClone(input)
+    const invalidConfig = invalid.categories[0]!.clues[0]!.config as typeof config
+    invalidConfig.link.mediaAssetIds[1] = 'missing'
+    await expect(packs.replace(pack.id, invalid)).rejects.toThrow('existing media')
+    expect((await packs.get(pack.id))?.revision).toBe(saved.revision)
+    await packs.replace(pack.id, input)
+    const ticket = (await store.media.beginDelete(ids[1]!, 'delete-link-song'))!
+    await expect(store.media.finishDelete(ticket, false)).rejects.toThrow('still exists')
+    expect((await packs.get(pack.id))?.categories[0]?.clues[0]?.config).toEqual(config)
+    await store.media.finishDelete(ticket, true)
+    await store.media.finishDelete(ticket, true)
+    const configs = database.prepare("SELECT config_json FROM clues WHERE json_type(config_json, '$.link') IS NOT NULL")
+      .all() as Array<{ config_json: string }>
+    expect(configs).toHaveLength(2)
+    for (const row of configs) expect(JSON.parse(row.config_json)).toEqual({
+      ...config, link: { ...config.link, mediaAssetIds: [ids[0], null, ids[2], ids[3]] },
+    })
+    expect((await packs.list())[0]).toMatchObject({ ordinaryClueCount: 2, specialEligibleClueCount: 1 })
+  })
   it.each([
     { type: 'music_free_text', finalQuestion: false },
     { type: 'music_multiple_choice', finalQuestion: false },

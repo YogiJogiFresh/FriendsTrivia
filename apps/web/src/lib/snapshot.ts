@@ -53,6 +53,7 @@ export interface RawActiveClue {
   revealMediaPlayback?: AudioPlaybackSettings
   revealGif?: RevealGif
   questionGif?: RevealGif
+  link?: { mediaUrls: (string | null)[]; hintVisible: boolean }
   choices?: string[]
   price?: RawPriceConfig
   answer?: unknown
@@ -226,6 +227,7 @@ export function cluesFromSnapshot(snapshot: Pick<RawSnapshot, 'board' | 'usedClu
         revealMediaPlayback: active?.revealMediaPlayback,
         revealGif: active?.revealGif,
         questionGif: active?.questionGif,
+        link: active?.link,
         revealedAnswer: formatRevealedAnswer(active),
       }
       if (uiType === 'music-multiple-choice') {
@@ -291,6 +293,8 @@ export function roomFromSnapshot(snapshot: RawSnapshot): RoomSummary {
     joinUrl: snapshot.joinUrl,
     locked: snapshot.joiningLocked,
     stateVersion: snapshot.stateVersion,
+    generation: snapshot.roomGeneration,
+    attempt: snapshot.attempt,
     deadline: snapshot.deadline,
     pausedSeconds: snapshot.pausedSeconds,
     finalRound: Boolean(snapshot.finalRound),

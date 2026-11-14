@@ -9,6 +9,7 @@ export interface PackSummary {
   categoryCount: number
   clueCount: number
   ordinaryClueCount: number
+  specialEligibleClueCount: number
   createdAt: string
   updatedAt: string
 }

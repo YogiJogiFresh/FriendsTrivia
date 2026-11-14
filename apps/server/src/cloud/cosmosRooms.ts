@@ -1,4 +1,5 @@
 import { createId, createRoomCode } from '../ids.js'
+import { getLinkConfig } from '../link.js'
 import { DomainError, type AttemptRef, type BoardEntry, type FinalWager, type GameClue,
   type LoadedRoom, type PackDocument, type Page, type PageRequest, type RoomCommit, type RoomRef,
   type RoomStore, type RoundOutcome, type RoundResult, type ScoreAward, type Submission } from '../domain.js'
@@ -153,11 +154,12 @@ export class CosmosRooms implements RoomStore {
   async board(ref: RoomRef): Promise<BoardEntry[]> {
     await this.reservation(ref)
     const frozen = await this.frozen(ref)
-    if (frozen) return frozen.filter((doc) => !doc.clue.finalQuestion).map((doc) => clone(doc.board))
+    if (frozen) return frozen.filter((doc) => !doc.clue.finalQuestion)
+      .map((doc) => ({ ...clone(doc.board), specialEligible: !getLinkConfig(doc.clue) }))
       .sort((a, b) => a.categoryPosition - b.categoryPosition || a.cluePosition - b.cluePosition)
     const board: BoardEntry[] = []
     for await (const doc of pages<ClueDoc>(this.access, this.query(ref, 'frozenClue')))
-      if (!doc.clue.finalQuestion) board.push(doc.board)
+      if (!doc.clue.finalQuestion) board.push({ ...doc.board, specialEligible: !getLinkConfig(doc.clue) })
     return board.sort((a, b) => a.categoryPosition - b.categoryPosition || a.cluePosition - b.cluePosition)
   }
   async clue(ref: RoomRef, id: string): Promise<GameClue | undefined> {
@@ -493,7 +495,8 @@ export class CosmosRooms implements RoomStore {
         throw new DomainError('conflict', 'Pack contains an unsupported clue')
       const clue: GameClue = { ...source, type: source.type as GameClue['type'], categoryId: category.id, config: source.config as Record<string, unknown> }
       const board: BoardEntry = { categoryId: category.id, categoryTitle: category.title, categoryPosition: category.position,
-        clueId: clue.id, boardValue: clue.boardValue, cluePosition: source.position, clueType: clue.type }
+        clueId: clue.id, boardValue: clue.boardValue, cluePosition: source.position, clueType: clue.type,
+        specialEligible: !clue.finalQuestion && !getLinkConfig(clue) }
       return document(ref.code, roomItemId(ref, `clue:${clue.id}`), 'frozenClue', { generation: ref.generation, clue, board })
     }))
   }

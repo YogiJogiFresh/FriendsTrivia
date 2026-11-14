@@ -219,6 +219,9 @@ export class RoomRepository {
         const deadline = room.state.deadline ? Date.parse(room.state.deadline) : undefined
         await this.saveState(room.id, { ...room.state, phase: 'PAUSED', previousPhase: room.state.phase,
           window: (room.state.window ?? 0) + 1, remainingMs: deadline === undefined ? undefined : Math.max(0, deadline - Date.now()),
+          linkHintRemainingMs: room.state.linkHintDeadline
+            ? Math.max(0, Date.parse(room.state.linkHintDeadline) - Date.now()) : room.state.linkHintRemainingMs,
+          linkHintDeadline: undefined,
           deadline: undefined }, 'paused', room.stateVersion)
         count++
       })

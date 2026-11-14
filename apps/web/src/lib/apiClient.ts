@@ -92,6 +92,7 @@ export interface ServerPackSummary {
   categoryCount: number
   clueCount: number
   ordinaryClueCount: number
+  specialEligibleClueCount?: number
   createdAt: string
   updatedAt: string
 }
@@ -99,6 +100,7 @@ export interface ServerPackSummary {
 export type ServerClueType = 'music_multiple_choice' | 'music_free_text' | 'price_slider'
 
 export interface ServerClueConfig {
+  link?: { mediaAssetIds: (string | null)[]; hintDelaySeconds: number }
   mediaPlayback?: AudioPlaybackSettings
   revealMediaPlayback?: AudioPlaybackSettings
   choices?: string[]

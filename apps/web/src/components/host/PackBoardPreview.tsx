@@ -7,6 +7,7 @@ import { CategoryBoard } from '../board/CategoryBoard'
 import { Button } from '../common'
 import { AudioPreview } from './AudioPreview'
 import { QuestionGif } from '../common/QuestionGif'
+import { completeLinkPlaylist } from '../../lib/linkClues'
 import styles from './PackBoardPreview.module.css'
 
 interface PackBoardPreviewProps {
@@ -75,7 +76,8 @@ function PreviewWorkspace({ categories, usedClueIds, onReveal, onReset, onAddClu
     if (selectedKey && !selected?.finalQuestion) onReveal(selectedKey)
   }
 
-  const mediaUrl = revealed ? selected?.clue.revealMediaUrl : selected?.clue.mediaUrl
+  const playlist = !revealed ? completeLinkPlaylist(selected?.clue.link?.mediaUrls) : undefined
+  const mediaUrl = revealed ? selected?.clue.revealMediaUrl : selected?.clue.link ? playlist?.[0] : selected?.clue.mediaUrl
 
   return (
     <div className={styles.workspace}>
@@ -90,6 +92,9 @@ function PreviewWorkspace({ categories, usedClueIds, onReveal, onReset, onAddClu
             {revealed ? 'Answer revealed' : selected.finalQuestion ? 'Final Question preview' : `$${selected.clue.value}`}
           </h3>
           <p className={styles.prompt}>{selected.clue.prompt.trim() || 'No question prompt yet.'}</p>
+          {!revealed && selected.clue.link ? <p className={styles.hint}>
+            Live hint appears after {selected.hintDelaySeconds} seconds. This manual preview shows it immediately.
+          </p> : null}
           {!revealed && selected.clue.questionGif ?
             <QuestionGif key={`${selected.clue.id}-${selected.clue.questionGif.url}`} gif={selected.clue.questionGif} /> : null}
           {revealed ? (
@@ -100,11 +105,13 @@ function PreviewWorkspace({ categories, usedClueIds, onReveal, onReset, onAddClu
           ) : null}
           {mediaUrl ? (
             <div className={styles.media}>
-              <AudioPreview key={`${selected.clue.id}-${revealed}-${mediaUrl}`} src={mediaUrl}
-                label={revealed ? 'Reveal audio' : 'Clue audio'} reveal={revealed}
-                settings={revealed ? selected.clue.revealMediaPlayback : selected.clue.mediaPlayback} />
+              <AudioPreview key={`${selected.clue.id}-${revealed}-${mediaUrl}`} src={mediaUrl} playlist={playlist}
+                label={revealed ? 'Reveal audio' : selected.clue.link ? 'Link audio' : 'Clue audio'} reveal={revealed}
+                settings={revealed ? selected.clue.revealMediaPlayback : selected.clue.link
+                  ? { delaySeconds: 0, playCount: 0 } : selected.clue.mediaPlayback} />
             </div>
-          ) : <p className={styles.hint}>{revealed ? 'No reveal audio attached.' : 'No clue audio attached.'}</p>}
+          ) : <p className={styles.hint}>{revealed ? 'No reveal audio attached.' : selected.clue.link
+            ? 'Choose four different songs to preview Link audio.' : 'No clue audio attached.'}</p>}
           {!revealed ? <Button onClick={reveal}>Reveal answer</Button> : null}
         </div>
       ) : (

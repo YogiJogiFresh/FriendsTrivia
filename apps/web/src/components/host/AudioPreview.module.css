@@ -22,6 +22,10 @@
   font-size: var(--font-size-sm);
 }
 
+.playlistStatus {
+  min-height: 3lh;
+}
+
 .player [role='alert'] {
   margin: 0;
   color: var(--color-danger-strong);

@@ -22,6 +22,59 @@ afterEach(async () => {
 })
 
 describe('portable pack bundles', () => {
+  it('exports Link playlists as v3, deduplicates all references and remaps ordered song IDs on import', async () => {
+    const root = fs.mkdtempSync(path.join(process.cwd(), '.test-link-bundle-'))
+    const sourceRoot = path.join(root, 'source'), targetRoot = path.join(root, 'target')
+    fs.mkdirSync(path.join(sourceRoot, 'songs'), { recursive: true })
+    fs.mkdirSync(path.join(targetRoot, 'songs'), { recursive: true })
+    const sourceDatabase = openDatabase(':memory:'), targetDatabase = openDatabase(':memory:')
+    cleanups.push(() => {
+      sourceDatabase.close()
+      targetDatabase.close()
+      fs.rmSync(root, { recursive: true, force: true })
+    })
+    const packs = new PackRepository(sourceDatabase), media = new MediaRepository(sourceDatabase)
+    const ids: string[] = []
+    for (let index = 0; index < 4; index++) {
+      const relativePath = path.join('songs', `link-${index}.mp3`)
+      const contents = `song ${index}`
+      fs.writeFileSync(path.join(sourceRoot, relativePath), contents)
+      ids.push((await media.create({ relativePath, originalName: `link-${index}.mp3`, mimeType: 'audio/mpeg', sizeBytes: contents.length })).id)
+    }
+    const created = await packs.create({ title: 'Link' })
+    const saved = (await packs.replace(created.id, {
+      title: 'Link', status: 'ready', categories: [{ title: 'Links', clues: [{
+        type: 'music_free_text', boardValue: 100, prompt: 'Connection?',
+        mediaAssetId: ids[0]!, revealMediaAssetId: ids[3]!,
+        config: { correctAnswer: 'Connection', link: { mediaAssetIds: ids, hintDelaySeconds: 10 } },
+      }] }],
+    }))!
+    const bundle = await createPackBundle(saved, media, sourceRoot)
+    const manifest = JSON.parse(new TextDecoder().decode(unzipSync(bundle)['pack.json']!))
+    expect(manifest.schemaVersion).toBe(3)
+    expect(manifest.media.map((entry: { sourceId: string }) => entry.sourceId).sort()).toEqual([...ids].sort())
+    const targetPacks = new PackRepository(targetDatabase), targetMedia = new MediaRepository(targetDatabase)
+    const imported = await importPackBundle(bundle, targetPacks, targetMedia, targetRoot) as typeof saved
+    const clue = imported.categories[0]!.clues[0]!
+    const config = clue.config as { correctAnswer: string; link: { mediaAssetIds: string[]; hintDelaySeconds: number } }
+    expect(config).toMatchObject({ correctAnswer: 'Connection', link: { hintDelaySeconds: 10 } })
+    expect(config.link.mediaAssetIds).toHaveLength(4)
+    expect(config.link.mediaAssetIds.every((id) => !ids.includes(id))).toBe(true)
+    expect(clue.mediaAssetId).toBe(config.link.mediaAssetIds[0])
+    expect(clue.revealMediaAssetId).toBe(config.link.mediaAssetIds[3])
+    for (const [index, id] of config.link.mediaAssetIds.entries()) {
+      const asset = (await targetMedia.get(id))!
+      expect(fs.readFileSync(path.join(targetRoot, asset.relativePath), 'utf8')).toBe(`song ${index}`)
+    }
+    const legacy = await packs.create({ title: 'Legacy' })
+    expect(JSON.parse(new TextDecoder().decode(unzipSync(await createPackBundle(legacy, media, sourceRoot))['pack.json']!)).schemaVersion).toBe(2)
+    const invalid = structuredClone(manifest)
+    invalid.pack.categories[0].clues[0].config.link.mediaAssetIds[1] = 'missing'
+    const files = unzipSync(bundle)
+    files['pack.json'] = strToU8(JSON.stringify(invalid))
+    await expect(importPackBundle(zipSync(files), targetPacks, targetMedia, targetRoot)).rejects.toThrow('missing media')
+    expect(await targetMedia.list()).toHaveLength(4)
+  })
   it('spools cloud bundles in temporary storage without writing to the app directory', async () => {
     const root = fs.mkdtempSync(path.join(process.cwd(), '.test-cloud-spool-'))
     const database = openDatabase(':memory:')

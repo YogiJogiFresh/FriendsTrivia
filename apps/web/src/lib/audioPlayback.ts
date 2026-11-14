@@ -1,6 +1,6 @@
 export interface AudioPlaybackSettings {
   delaySeconds: number
-  /** Total plays; zero loops until stopped. */
+  /** Total plays (full passes for playlists); zero loops until stopped. */
   playCount: number
 }
 
@@ -35,16 +35,24 @@ export const playbackFailureMessages: Record<PlaybackFailure, string> = {
 export function createAudioPlayback(audio: HTMLAudioElement, settings: AudioPlaybackSettings, callbacks: {
   onState?: (state: PlaybackState, plays: number) => void
   onError?: (failure: PlaybackFailure) => void
+  playlist?: readonly string[]
+  onTrack?: (index: number) => void
 } = {}) {
   if (!validPlayback(settings)) throw new Error('Invalid song playback settings')
+  const playlist = callbacks.playlist ? [...callbacks.playlist] : undefined
+  if (playlist && !playlist.length) throw new Error('Empty audio playlist')
   let state: PlaybackState = 'idle'
   let plays = 0
+  let track = 0
+  let sourcePending = !!playlist
+  let failed = false
   let timer: ReturnType<typeof setTimeout> | undefined
   let due = 0
   let remaining = 0
   let nextPlay = true
   let generation = 0
   let disposed = false
+  let removeListeners = () => {}
   audio.loop = false
 
   function update(value: PlaybackState) {
@@ -55,10 +63,13 @@ export function createAudioPlayback(audio: HTMLAudioElement, settings: AudioPlay
     generation += 1
     clearTimeout(timer)
     timer = undefined
+    removeListeners()
+    removeListeners = () => {}
   }
   function failure(reason: PlaybackFailure) {
     if (disposed) return
     clear()
+    failed = true
     audio.pause()
     update('paused')
     callbacks.onError?.(reason)
@@ -68,14 +79,40 @@ export function createAudioPlayback(audio: HTMLAudioElement, settings: AudioPlay
     remaining = 0
     const ticket = ++generation
     update('starting')
-    void audio.play().then(() => {
-      if (disposed || ticket !== generation) return
-      if (nextPlay) plays += 1
-      nextPlay = false
-      update('playing')
-    }).catch((error: unknown) => {
-      if (!disposed && ticket === generation) failure(playbackFailure(error, audio.error))
-    })
+    const current = () => !disposed && ticket === generation
+    const endedCurrent = () => {
+      // A queued end from the previous source must not end the newly loaded track.
+      if (current() && audio.ended !== false) ended()
+    }
+    const mediaFailed = () => {
+      if (current() && audio.error) failure(playbackFailure(undefined, audio.error))
+    }
+    audio.addEventListener('ended', endedCurrent)
+    audio.addEventListener('error', mediaFailed)
+    removeListeners = () => {
+      audio.removeEventListener('ended', endedCurrent)
+      audio.removeEventListener('error', mediaFailed)
+    }
+    try {
+      if (playlist && sourcePending) {
+        audio.src = playlist[track]
+        audio.load()
+        sourcePending = false
+        if (!current()) return
+        callbacks.onTrack?.(track)
+      }
+      if (!current()) return
+      void audio.play().then(() => {
+        if (!current()) return
+        if (nextPlay && track === 0) plays += 1
+        nextPlay = false
+        update('playing')
+      }).catch((error: unknown) => {
+        if (current()) failure(playbackFailure(error, audio.error))
+      })
+    } catch (error) {
+      if (current()) failure(playbackFailure(error, audio.error))
+    }
   }
   function wait(milliseconds: number) {
     remaining = milliseconds
@@ -86,13 +123,19 @@ export function createAudioPlayback(audio: HTMLAudioElement, settings: AudioPlay
   }
   function ended() {
     if (disposed || state !== 'playing') return
-    if (settings.playCount > 0 && plays >= settings.playCount) {
+    clear()
+    const passEnded = !playlist || track === playlist.length - 1
+    if (passEnded && settings.playCount > 0 && plays >= settings.playCount) {
       update('finished')
       return
     }
+    if (playlist) {
+      track = passEnded ? 0 : track + 1
+      sourcePending = true
+    }
     audio.currentTime = 0
     nextPlay = true
-    wait(settings.delaySeconds * 1000)
+    wait(passEnded ? settings.delaySeconds * 1000 : 0)
   }
   function stop() {
     clear()
@@ -101,6 +144,9 @@ export function createAudioPlayback(audio: HTMLAudioElement, settings: AudioPlay
     plays = 0
     remaining = 0
     nextPlay = true
+    track = 0
+    sourcePending = !!playlist
+    failed = false
     update('idle')
   }
   function start() {
@@ -109,6 +155,7 @@ export function createAudioPlayback(audio: HTMLAudioElement, settings: AudioPlay
     wait(settings.delaySeconds * 1000)
   }
   function pause() {
+    if (disposed) return
     if (state !== 'waiting' && state !== 'starting' && state !== 'playing') return
     if (state === 'waiting') remaining = Math.max(0, due - Date.now())
     clear()
@@ -118,20 +165,13 @@ export function createAudioPlayback(audio: HTMLAudioElement, settings: AudioPlay
   function resume() {
     if (disposed) return
     if (state === 'idle') start()
-    else if (state === 'paused') wait(remaining)
+    else if (state === 'paused' && (!playlist || !failed)) wait(remaining)
   }
-  audio.addEventListener('ended', ended)
-  function mediaFailed() {
-    if (audio.error) failure(playbackFailure(undefined, audio.error))
-  }
-  audio.addEventListener('error', mediaFailed)
   return {
     start, pause, resume, stop,
     dispose() {
       disposed = true
       stop()
-      audio.removeEventListener('ended', ended)
-      audio.removeEventListener('error', mediaFailed)
     },
   }
 }

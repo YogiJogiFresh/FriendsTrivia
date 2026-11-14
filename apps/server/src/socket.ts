@@ -653,16 +653,18 @@ export function registerSocketServer(app: FastifyInstance, rooms: RoomRepository
           }
           case 'skip':
             await engine.skipClue(room); break
-          case 'replay':
+          case 'replay': {
             if (!room.state.activeClueId)
               throw new Error('No clue is selected')
-            if (!(await engine.publicSnapshot(room)).activeClue?.mediaUrl) {
+            const active = (await engine.publicSnapshot(room)).activeClue
+            if (!active?.mediaUrl && !(active?.link?.mediaUrls.length === 4 && active.link.mediaUrls.every(Boolean))) {
               throw new Error('This clue has no audio to replay')
             }
             engine.afterCommit(() => io.to(`room:${room.id}`).emit('media:replay', {
               clueId: room.state.activeClueId,
             }))
             break
+          }
           case 'pause':
             await engine.pause(room); break
           case 'resume':

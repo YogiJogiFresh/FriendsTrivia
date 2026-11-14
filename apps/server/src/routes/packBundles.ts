@@ -22,6 +22,7 @@ import {
   type BundleFile,
 } from '../storage/bundleWorker.js'
 import { isPackInput } from './packs.js'
+import { clueMediaIds, getLinkConfig } from '../link.js'
 
 interface BundleMedia {
   sourceId: string
@@ -51,7 +52,7 @@ interface PackWithMedia {
 }
 
 interface BundlePack {
-  schemaVersion: 2
+  schemaVersion: 2 | 3
   pack: PackWithMedia
   media: BundleMedia[]
 }
@@ -77,8 +78,7 @@ function acquireBundleSlot(): () => void {
 
 function referencedMediaIds(pack: PackWithMedia): string[] {
   return [...new Set(pack.categories.flatMap((category) =>
-    category.clues.flatMap((clue) => [clue.mediaAssetId, clue.revealMediaAssetId])
-      .filter((id): id is string => Boolean(id)),
+    category.clues.flatMap(clueMediaIds),
   ))]
 }
 
@@ -159,7 +159,8 @@ async function exportBundleFile(
     if (digest) optimizedFileNames.set(digest, fileName)
     manifestMedia.push({ sourceId, fileName, originalName: asset.originalName, mimeType: asset.mimeType })
   }
-  const manifest = JSON.stringify({ schemaVersion: 2, pack, media: manifestMedia }, null, 2)
+  const schemaVersion = pack.categories.some((category) => category.clues.some((clue) => getLinkConfig(clue))) ? 3 : 2
+  const manifest = JSON.stringify({ schemaVersion, pack, media: manifestMedia }, null, 2)
   const manifestSize = Buffer.byteLength(manifest)
   if (manifestSize > MAX_MANIFEST_BYTES || expanded + manifestSize > MAX_EXPANDED_BUNDLE_BYTES) {
     throw new Error('Bundle manifest or expanded size exceeds its limit')
@@ -204,7 +205,7 @@ async function importBundleFile(
   const manifestFile = files.find((file) => file.name === 'pack.json')
   if (!manifestFile) throw new Error('Bundle is missing a valid pack.json manifest')
   const manifest = JSON.parse(await fs.promises.readFile(manifestFile.path, 'utf8')) as Partial<BundlePack>
-  if (manifest.schemaVersion !== 2 || !isBundlePack(manifest.pack) || !Array.isArray(manifest.media)) {
+  if ((manifest.schemaVersion !== 2 && manifest.schemaVersion !== 3) || !isBundlePack(manifest.pack) || !Array.isArray(manifest.media)) {
     throw new Error('Invalid or unsupported pack bundle')
   }
   const referencedIds = referencedMediaIds(manifest.pack)
@@ -273,7 +274,13 @@ async function importBundleFile(
           mediaAssetId: clue.mediaAssetId ? mediaIdMap.get(clue.mediaAssetId)! : null,
           revealMediaAssetId: clue.revealMediaAssetId ? mediaIdMap.get(clue.revealMediaAssetId)! : null,
           finalQuestion: Boolean(clue.finalQuestion),
-          config: clue.config,
+          config: getLinkConfig(clue) ? {
+            ...clue.config as Record<string, unknown>,
+            link: {
+              ...((clue.config as Record<string, unknown>).link as Record<string, unknown>),
+              mediaAssetIds: getLinkConfig(clue)!.mediaAssetIds.map((id) => mediaIdMap.get(id!)!),
+            },
+          } : clue.config,
         })),
       })),
     }, owner)

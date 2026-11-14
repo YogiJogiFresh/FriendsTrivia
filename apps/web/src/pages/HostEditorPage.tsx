@@ -33,12 +33,15 @@ import { PackBoardPreview } from '../components/host/PackBoardPreview'
 import { AudioPlaybackFields } from '../components/host/AudioPlaybackFields'
 import { AudioPreview } from '../components/host/AudioPreview'
 import { validPlayback } from '../lib/audioPlayback'
+import { completeLinkPlaylist, replaceClueMedia, validLinkConfig } from '../lib/linkClues'
 import { Badge, Button, Card, GifPicker, TextareaField, TextField } from '../components'
 import styles from './HostEditorPage.module.css'
 
-const clueTypeOptions: Array<{ value: ServerClueType; label: string }> = [
+type EditorClueType = ServerClueType | 'link'
+const clueTypeOptions: Array<{ value: EditorClueType; label: string }> = [
   { value: 'music_multiple_choice', label: 'Music · Multiple choice' },
   { value: 'music_free_text', label: 'Music · Free text' },
+  { value: 'link', label: 'Link · Four songs' },
   { value: 'price_slider', label: 'Price slider' },
 ]
 
@@ -292,6 +295,15 @@ export function HostEditorPage() {
   async function handleSave() {
     if (!pack) return
     for (const category of pack.categories) {
+      const invalidLink = category.clues.find((entry) => !validLinkConfig(entry.config.link))
+      if (invalidLink) {
+        setSaveError('Link clues need four different songs and a whole-number hint delay from 0 to 300 seconds.')
+        setSaveSuccess(false)
+        setEditorSection('categories')
+        setSelectedCategoryKey(category.key)
+        setSelectedClueKey(invalidLink.key)
+        return
+      }
       const clue = category.clues.find((entry) => [entry.config.mediaPlayback, entry.config.revealMediaPlayback]
         .some((settings) => settings !== undefined && !validPlayback(settings)))
       if (clue) {
@@ -373,16 +385,7 @@ export function HostEditorPage() {
       updateCategories((categories) =>
         categories.map((category) => ({
           ...category,
-          clues: category.clues.map((clue) =>
-            clue.mediaAssetId === asset.id || clue.revealMediaAssetId === asset.id
-              ? {
-                ...clue,
-                mediaAssetId: clue.mediaAssetId === asset.id ? null : clue.mediaAssetId,
-                revealMediaAssetId:
-                  clue.revealMediaAssetId === asset.id ? null : clue.revealMediaAssetId,
-              }
-              : clue,
-          ),
+          clues: category.clues.map((clue) => replaceClueMedia(clue, asset.id, null)),
         })),
       )
     } catch (err) {
@@ -468,8 +471,21 @@ export function HostEditorPage() {
     )
   }
 
-  function handleClueTypeChange(categoryKey: string, clueKey: string, type: ServerClueType) {
-    updateClue(categoryKey, clueKey, { type, config: defaultConfigForType(type), mediaAssetId: null, selectedChoiceIndex: null })
+  function handleClueTypeChange(categoryKey: string, clueKey: string, type: EditorClueType) {
+    const clue = pack?.categories.find((category) => category.key === categoryKey)?.clues.find((entry) => entry.key === clueKey)
+    if (!clue) return
+    const { link: _link, ...withoutLink } = clue.config
+    const storedType = type === 'link' ? 'music_free_text' : type
+    const config = storedType === 'music_free_text' && clue.type === 'music_free_text'
+      ? withoutLink : defaultConfigForType(storedType)
+    updateClue(categoryKey, clueKey, {
+      type: storedType,
+      config: type === 'link'
+        ? { ...config, link: { mediaAssetIds: [null, null, null, null], hintDelaySeconds: 10 } }
+        : config,
+      mediaAssetId: null,
+      selectedChoiceIndex: null,
+    })
   }
 
   function handleDeleteClue(categoryKey: string, clueKey: string) {
@@ -791,7 +807,7 @@ export function HostEditorPage() {
                         </span>
                         <span className={styles.clueSummaryText}>
                           <strong>{clue.prompt.trim() || 'Untitled clue'}</strong>
-                          <span>{clueTypeLabels[clue.type]}</span>
+                          <span>{clue.config.link ? 'Link · Four songs' : clueTypeLabels[clue.type]}</span>
                         </span>
                       </summary>
                       <div className={styles.clueContent}>
@@ -816,9 +832,9 @@ export function HostEditorPage() {
                               <select
                                 id={`clue-type-${clue.key}`}
                                 className={styles.statusSelect}
-                                value={clue.type}
+                                value={clue.config.link ? 'link' : clue.type}
                                 onChange={(event) =>
-                                  handleClueTypeChange(selectedCategory.key, clue.key, event.target.value as ServerClueType)
+                                  handleClueTypeChange(selectedCategory.key, clue.key, event.target.value as EditorClueType)
                                 }
                               >
                                 {clueTypeOptions.map((option) => (
@@ -843,11 +859,50 @@ export function HostEditorPage() {
 
                           <TextareaField
                             id={`clue-prompt-${clue.key}`}
-                            label="Question prompt"
+                            label={clue.config.link ? 'Delayed hint' : 'Question prompt'}
                             value={clue.prompt}
                             onChange={(event) => updateClue(selectedCategory.key, clue.key, { prompt: event.target.value })}
                             placeholder="e.g. This 1985 anthem topped the charts for six weeks."
                           />
+                          {clue.config.link ? <div className={styles.field}>
+                            <p className={styles.helperText}>
+                              Players can answer immediately. These four songs loop on Display until Reveal.
+                              The hint and optional question GIF appear after the delay. Link clues never receive specials.
+                            </p>
+                            <TextField label="Hint delay (seconds)" type="number" min={0} max={300} step={1}
+                              value={clue.config.link.hintDelaySeconds}
+                              onChange={(event) => updateClue(selectedCategory.key, clue.key, {
+                                config: { ...clue.config, link: {
+                                  ...clue.config.link!,
+                                  hintDelaySeconds: event.target.valueAsNumber,
+                                } },
+                              })} />
+                            {[0, 1, 2, 3].map((index) => <div key={index} className={styles.field}>
+                              <label className={styles.statusLabel} htmlFor={`link-song-${clue.key}-${index}`}>
+                                Song {index + 1}
+                              </label>
+                              <select id={`link-song-${clue.key}-${index}`} className={styles.statusSelect}
+                                value={clue.config.link!.mediaAssetIds[index] ?? ''}
+                                onChange={(event) => updateClue(selectedCategory.key, clue.key, {
+                                  config: { ...clue.config, link: {
+                                    ...clue.config.link!,
+                                    mediaAssetIds: [0, 1, 2, 3].map((slot) =>
+                                      slot === index ? event.target.value || null : clue.config.link!.mediaAssetIds[slot] ?? null),
+                                  } },
+                                })}>
+                                <option value="">Choose song {index + 1}</option>
+                                {musicMediaAssets.map((asset) =>
+                                  <option key={asset.id} value={asset.id}>{asset.originalName}</option>)}
+                              </select>
+                            </div>)}
+                            <Button variant="ghost" onClick={() => setEditorSection('media')}>Upload or manage songs</Button>
+                            {completeLinkPlaylist(clue.config.link.mediaAssetIds) ? (
+                              <AudioPreview src={mediaStreamUrl(clue.config.link.mediaAssetIds[0]!)}
+                                playlist={clue.config.link.mediaAssetIds.map((id) => mediaStreamUrl(id!))}
+                                settings={{ delaySeconds: 0, playCount: 0 }} label="Link audio"
+                                active={editorSection === 'categories' && selectedClueKey === clue.key} />
+                            ) : <p className={styles.helperText}>Choose four different songs to preview the loop.</p>}
+                          </div> : null}
                           <GifPicker
                             stage="question"
                             value={clue.config.questionGif}
@@ -861,7 +916,7 @@ export function HostEditorPage() {
                             }}
                           />
 
-                          {clue.type !== 'price_slider' ? (
+                          {clue.type !== 'price_slider' && !clue.config.link ? (
                             <div className={styles.field}>
                               <label className={styles.statusLabel} htmlFor={`clue-media-${clue.key}`}>
                                 Song (optional)
@@ -1156,11 +1211,7 @@ export function HostEditorPage() {
             if (replaces) {
               updateCategories((categories) => categories.map((category) => ({
                 ...category,
-                clues: category.clues.map((clue) => ({
-                  ...clue,
-                  mediaAssetId: clue.mediaAssetId === replaces.id ? asset.id : clue.mediaAssetId,
-                  revealMediaAssetId: clue.revealMediaAssetId === replaces.id ? asset.id : clue.revealMediaAssetId,
-                })),
+                clues: category.clues.map((clue) => replaceClueMedia(clue, replaces.id, asset.id)),
               })))
               setSaveSuccess(false)
             }

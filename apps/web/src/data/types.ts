@@ -67,6 +67,7 @@ interface BaseClue {
   /** Optional hosted GIF shown only after the answer is revealed. */
   revealGif?: RevealGif
   questionGif?: RevealGif
+  link?: { mediaUrls: (string | null)[]; hintVisible: boolean }
   /**
    * Human-readable correct answer, populated only once the server reveals
    * this clue (phase REVEAL/LEADERBOARD/FINISHED) — absent otherwise, since
@@ -154,6 +155,8 @@ export interface RoomSummary {
   joinUrl: string
   locked: boolean
   stateVersion: number
+  generation?: string
+  attempt?: number
   deadline?: string
   pausedSeconds?: number
   finalRound: boolean

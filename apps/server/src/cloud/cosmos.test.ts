@@ -43,6 +43,36 @@ function adjustment(ref: RoomCommit['ref'], revision: string, playerId: string, 
     change: { kind: 'adjustment', award: { playerId, delta, source: 'host_adjustment', reason: 'Correction', actor: 'host' } } }
 }
 describe('Cosmos adapter — OFFLINE SDK-seam tests, NOT live Cosmos conformance', () => {
+  it('claims all Link songs for packs and frozen rooms and derives special eligibility without clue reads', async () => {
+    const game = await fixture()
+    const ids: string[] = []
+    for (let index = 0; index < 4; index++) ids.push((await upload(game.store, `songs/link-${index}.mp3`, 10)).id)
+    const ordinary = game.pack.categories[0]!.clues[0]!
+    const { id: _ordinaryId, ...final } = ordinary
+    const saved = (await game.packs.replace(game.pack.id, { ...game.pack, categories: [{
+      ...game.pack.categories[0]!, clues: [
+        { type: 'music_free_text', boardValue: 100, prompt: 'Connection?', mediaAssetId: ids[0]!, revealMediaAssetId: ids[3]!,
+          config: { correctAnswer: 'Connection', link: { mediaAssetIds: ids, hintDelaySeconds: 10 } } },
+        ordinary,
+        { ...final, finalQuestion: true },
+      ],
+    }] }))!
+    expect((await game.packs.list())[0]).toMatchObject({ ordinaryClueCount: 2, specialEligibleClueCount: 1 })
+    for (const id of ids) await expect(game.store.media.beginDelete(id, `blocked-${id}`)).rejects.toMatchObject({ code: 'media_referenced' })
+    const created = await game.rooms.create(game.pack.id, settings, 4)
+    const reads = vi.spyOn(game.games, 'read'), queries = vi.spyOn(game.games, 'query')
+    expect((await game.store.rooms.board(created.room.ref)).map((entry) => entry.specialEligible)).toEqual([false, true])
+    expect(reads.mock.calls.some(([, id]) => id.includes('clue:'))).toBe(false)
+    expect(queries.mock.calls.filter(([query]) => query.filters.some((filter) => filter.value === 'frozenClue'))).toHaveLength(1)
+    const frozen = await game.store.rooms.clue(created.room.ref, saved.categories[0]!.clues[0]!.id)
+    expect(frozen?.config.link).toEqual({ mediaAssetIds: ids, hintDelaySeconds: 10 })
+    await game.packs.replace(game.pack.id, { ...saved, categories: [], status: 'draft' })
+    for (const id of ids) await expect(game.store.media.beginDelete(id, `frozen-${id}`)).rejects.toMatchObject({ code: 'media_referenced' })
+    expect((await game.store.rooms.clue(created.room.ref, frozen!.id))?.config.link).toEqual(frozen?.config.link)
+    await game.engine.endSession(created.room)
+    await game.store.history.removeCompleted(created.room.id)
+    for (const id of ids) expect(await game.store.media.beginDelete(id, `released-${id}`)).toBeDefined()
+  })
   it('recovers the original team, score, answer and wager at capacity without changing the game window', async () => {
     const game = await fixture()
     const created = await game.rooms.create(game.pack.id, { ...settings, teams: ['Blue'] }, 4)
