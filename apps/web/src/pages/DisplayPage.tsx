@@ -17,10 +17,10 @@ import {
   Podium,
   QrLobbyPanel,
   ReconnectBanner,
-  RosterList,
   TutorialSlideshow,
 } from '../components'
 import { QuestionGif } from '../components/common/QuestionGif'
+import { DisplayLobbyRoster } from '../components/lobby/DisplayLobbyRoster'
 import styles from './DisplayPage.module.css'
 
 const SILENT_AUDIO =
@@ -357,7 +357,7 @@ export function DisplayPage() {
       game.room.answerProgress.answered === game.room.answerProgress.total)
 
   return (
-    <div className={[styles.shell, fittedView ? styles.fittedShell : ''].join(' ')}>
+    <div className={[styles.shell, fittedView || gamePhase === 'LOBBY' ? styles.fittedShell : ''].join(' ')}>
       <audio ref={audioRef} preload="auto" aria-label="Trivia music clip" />
       <header className={styles.topBar}>
         <span className={styles.brand}>FriendsTrivia</span>
@@ -414,33 +414,30 @@ export function DisplayPage() {
       ) : null}
 
       {game.room.phase === 'LOBBY' ? (
-        <div className={styles.main}>
-          <div className={styles.lobbyLayout}>
-            <div className={styles.joinPanel}>
-              <QrLobbyPanel
-                roomCode={game.room.code}
-                joinUrl={game.room.joinUrl}
-                locked={game.room.locked}
-              />
-              <Button
-                variant={audioReady ? 'secondary' : 'primary'}
-                size="lg"
-                onClick={() => void prepareDisplay()}
-              >
-                {audioReady && isFullscreen ? 'Display ready' : 'Prepare display'}
-              </Button>
-              {presentationNotice ? (
-                <p className={styles.presentationNotice} role="status">
-                  {presentationNotice}
-                </p>
-              ) : null}
-              {audioError ? <p role="alert">{audioError}</p> : null}
-            </div>
-            <TutorialSlideshow />
+        <div className={styles.lobbyLayout}>
+          <div className={styles.joinPanel}>
+            <QrLobbyPanel
+              roomCode={game.room.code}
+              joinUrl={game.room.joinUrl}
+              locked={game.room.locked}
+            />
+            <Button
+              variant={audioReady ? 'secondary' : 'primary'}
+              size="lg"
+              onClick={() => void prepareDisplay()}
+            >
+              {audioReady && isFullscreen ? 'Display ready' : 'Prepare display'}
+            </Button>
+            {presentationNotice ? (
+              <p className={styles.presentationNotice} role="status">
+                {presentationNotice}
+              </p>
+            ) : null}
+            {audioError ? <p role="alert">{audioError}</p> : null}
           </div>
-          <div className={styles.lobbyRoster}>
-            <h2>Players ({game.players.length})</h2>
-            <RosterList players={game.players} />
+          <div className={styles.lobbyDetails}>
+            <TutorialSlideshow />
+            <DisplayLobbyRoster players={game.players} />
           </div>
         </div>
       ) : null}

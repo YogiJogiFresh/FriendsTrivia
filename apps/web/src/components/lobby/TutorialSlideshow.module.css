@@ -1,8 +1,11 @@
 .slideshow {
   display: grid;
-  gap: var(--space-4);
-  width: min(100%, 42rem);
-  padding: var(--space-5);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-width: 0;
+  min-height: 0;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-3);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   background: var(--color-surface);
@@ -20,6 +23,7 @@
 
 .header h2 {
   margin: var(--space-1) 0 0;
+  font-size: var(--font-size-xl);
 }
 
 .label,
@@ -33,10 +37,12 @@
 
 .slide {
   display: grid;
-  align-content: center;
-  gap: var(--space-3);
-  min-height: 13rem;
-  padding: var(--space-5);
+  align-content: start;
+  gap: var(--space-2);
+  min-height: 0;
+  padding: var(--space-3);
+  overflow: auto;
+  overflow-wrap: anywhere;
   border-radius: var(--radius-lg);
   background:
     radial-gradient(circle at top right, rgba(255, 176, 32, 0.16), transparent 45%),
@@ -49,12 +55,12 @@
 }
 
 .slide h3 {
-  font-size: var(--font-size-2xl);
+  font-size: var(--font-size-xl);
 }
 
 .slide p {
   color: var(--color-text-muted);
-  font-size: var(--font-size-lg);
+  font-size: var(--font-size-md);
 }
 
 .slide strong {
@@ -70,19 +76,18 @@
 
 .dot,
 .activeDot {
-  width: 0.75rem;
-  height: 0.75rem;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
   padding: 0;
-  border: 1px solid var(--color-text-muted);
+  border: 0;
   border-radius: var(--radius-pill);
-  background: transparent;
+  background: radial-gradient(circle, var(--color-text-muted) 4px, transparent 5px);
   cursor: pointer;
 }
 
 .activeDot {
-  border-color: var(--color-amber);
-  background: var(--color-amber);
-  transform: scale(1.2);
+  background: radial-gradient(circle, var(--color-amber) 5px, transparent 6px);
 }
 
 .dot:focus-visible,
@@ -91,16 +96,7 @@
   outline-offset: 3px;
 }
 
-@media (max-width: 560px) {
-  .slideshow {
-    padding: var(--space-4);
-  }
-
-  .slide {
-    min-height: 15rem;
-    padding: var(--space-4);
-  }
-
+@media (max-width: 1000px) {
   .controls {
     flex-wrap: wrap;
   }
@@ -108,11 +104,5 @@
   .dots {
     order: -1;
     width: 100%;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .activeDot {
-    transform: none;
   }
 }
