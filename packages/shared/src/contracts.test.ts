@@ -41,6 +41,23 @@ const validManifest = {
 } as const
 
 describe('shared contract schemas', () => {
+  it('preserves optional price reveal details without replacing the numeric target', () => {
+    const clue = {
+      key: 'price-100', type: 'PRICE_SLIDER', boardValue: 100, position: 0,
+      prompt: 'What did it cost?', targetPrice: 0, slider: { min: 0, max: 100, step: 1 },
+      config: { revealNotes: 'Free admission\nIncludes <strong>all</strong> exhibits' },
+    }
+    expect(ManifestClueSchema.parse(clue)).toMatchObject(clue)
+    expect(ClueSchema.parse({ ...clue, id: 'clue', categoryId: 'category' })).toMatchObject(clue)
+    for (const revealNotes of ['', ' \n ', 'a'.repeat(2000)]) {
+      expect(ManifestClueSchema.parse({ ...clue, config: { revealNotes } }))
+        .toMatchObject({ config: { revealNotes } })
+    }
+    for (const revealNotes of [null, 7, 'a'.repeat(2001)]) {
+      expect(ManifestClueSchema.safeParse({ ...clue, config: { revealNotes } }).success).toBe(false)
+    }
+    expect(ManifestClueSchema.safeParse({ ...clue, targetPrice: undefined }).success).toBe(false)
+  })
   it('supports Link on existing free-text clues and manifests without changing answer types', () => {
     const clue = {
       key: 'link-100', type: 'MUSIC_FREE_TEXT', boardValue: 100, position: 0,

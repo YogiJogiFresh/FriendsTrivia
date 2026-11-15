@@ -13,6 +13,33 @@ afterEach(async () => {
     await cleanup()
 })
 describe('pack deletion', () => {
+  it('preserves price reveal details and rejects invalid text without replacing saved content', async () => {
+    const database = openDatabase(':memory:')
+    const packs = new PackRepository(database)
+    const pack = await packs.create({ title: 'Prices' })
+    const app = Fastify()
+    await registerPackRoutes(app, packs)
+    cleanups.push(async () => { await app.close(); database.close() })
+    const config = { correctPrice: 0, min: 0, max: 100, step: 1, prefix: '$',
+      revealNotes: 'Free admission\nIncludes all exhibits' }
+    const input = { title: 'Prices', categories: [{ title: 'Prices', clues: [
+      { type: 'price_slider', boardValue: 100, prompt: 'Price?', config },
+    ] }] }
+    expect((await app.inject({ method: 'PUT', url: `/api/packs/${pack.id}`, payload: input })).statusCode).toBe(200)
+    for (const revealNotes of [null, 7, [], {}, 'a'.repeat(2001)]) {
+      const bad = structuredClone(input)
+      Object.assign(bad.categories[0]!.clues[0]!.config, { revealNotes })
+      expect((await app.inject({ method: 'PUT', url: `/api/packs/${pack.id}`, payload: bad })).statusCode).toBe(400)
+      expect((await packs.get(pack.id))?.categories[0]?.clues[0]?.config).toEqual(config)
+    }
+    for (const revealNotes of ['a'.repeat(2000), ' \n ', '', undefined]) {
+      const payload = structuredClone(input)
+      Object.assign(payload.categories[0]!.clues[0]!.config, { revealNotes })
+      expect((await app.inject({ method: 'PUT', url: `/api/packs/${pack.id}`, payload })).statusCode).toBe(200)
+      const saved = (await app.inject({ method: 'GET', url: `/api/packs/${pack.id}` })).json()
+      expect(saved.categories[0].clues[0].config).toEqual(JSON.parse(JSON.stringify({ ...config, revealNotes })))
+    }
+  })
   it('preserves Link saves, validates existing songs, and nulls deleted slots across archived clues', async () => {
     const database = openDatabase(':memory:')
     cleanups.push(() => { database.close() })

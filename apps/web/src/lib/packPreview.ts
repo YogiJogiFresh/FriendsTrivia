@@ -55,7 +55,9 @@ export function clueFromDraft(categories: PreviewDraftCategory[], clueKey: strin
     mediaPlayback: config.mediaPlayback,
     revealMediaPlayback: config.revealMediaPlayback,
     revealGif: revealed ? config.revealGif : undefined,
-    revealNotes: revealed ? config.link?.revealNotes?.trim() || undefined : undefined,
+    revealNotes: revealed
+      ? (draft.type === 'price_slider' ? config.revealNotes : config.link?.revealNotes)?.trim() || undefined
+      : undefined,
     questionGif: !revealed ? config.questionGif : undefined,
     choices: config.choices,
     price: {

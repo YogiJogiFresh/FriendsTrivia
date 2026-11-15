@@ -131,6 +131,11 @@ For Link clues, **Answer reveal > Songs and artists** accepts optional multiline
 (up to 2000 characters). It appears beneath the correct answer on Display, player screens
 and Board Preview only after reveal. It does not change accepted answers or scoring.
 
+For price clues, **Answer reveal > Price and details** accepts optional multiline text
+(up to 2000 characters), shown beneath the correct price on the same three screens only
+after reveal, including Final Questions. The numeric **Correct price** still controls scoring;
+the additional text does not replace it.
+
 Display loops songs 1 through 4 until **Reveal**, including after answers close. Pause freezes
 playback and the hint delay; Replay Link audio restarts song 1 without resetting either the hint
 or answer clock. Reveal uses its separate song/GIF settings. Audio loading does not postpone the

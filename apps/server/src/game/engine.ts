@@ -144,6 +144,10 @@ export class GameEngine extends EventEmitter {
         ? (clue.config)
         : undefined
       const link = clue ? getLinkConfig(clue) : undefined
+      const revealNotes = clue?.type === 'price_slider'
+        ? typeof clueConfig?.revealNotes === 'string' && clueConfig.revealNotes.length <= 2000
+          ? clueConfig.revealNotes.trim() || undefined : undefined
+        : link?.revealNotes
       const contentPhase = room.state.phase === 'PAUSED' ? room.state.previousPhase : room.state.phase
       const hintVisible = !link || ['REVEAL', 'LEADERBOARD', 'FINISHED'].includes(contentPhase ?? '') ||
         (room.state.phase === 'PAUSED'
@@ -198,7 +202,7 @@ export class GameEngine extends EventEmitter {
             revealGif: revealed && isRevealGif(clueConfig?.revealGif)
               ? clueConfig.revealGif
               : undefined,
-            revealNotes: revealed ? link?.revealNotes : undefined,
+            revealNotes: revealed ? revealNotes : undefined,
             choices: !votingHidden && visibleClue.type === 'music_multiple_choice'
               ? this.safeChoices(clueConfig ?? {})
               : undefined,

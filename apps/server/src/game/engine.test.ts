@@ -261,6 +261,45 @@ describe('Link clues', () => {
     } finally { game.engine.dispose() }
   })
 })
+describe('price reveal details', () => {
+  it.each([false, true])('withholds notes until reveal and keeps numeric scoring (final: %s)', async (finalQuestion) => {
+    const game = await createGame()
+    const revealNotes = ' \n$100 including tax\n<strong>Receipt details</strong>\n '
+    game.database.prepare('UPDATE clues SET config_json = ?, is_final = ? WHERE id = ?')
+      .run(JSON.stringify({ correctPrice: 100, min: 0, max: 200, step: 1, revealNotes }),
+        finalQuestion ? 1 : 0, game.clueIds[1]!)
+    try {
+      let room = await game.engine.startGame(game.room)
+      if (finalQuestion) {
+        room = await game.engine.startFinalRound(room)
+        expect((await game.engine.publicSnapshot(room)).activeClue).toBeUndefined()
+        await game.engine.submitFinalWager(room, game.playerOne.id, 0)
+        await game.engine.submitFinalWager(room, game.playerTwo.id, 0)
+        room = await game.engine.startFinalQuestion(room)
+      } else {
+        room = await game.engine.selectClue(room, game.clueIds[1]!)
+      }
+      const pair = await game.engine.snapshotPair(room)
+      expect(pair.host?.activeClue?.config).toMatchObject({ revealNotes })
+      expect(pair.public.activeClue?.revealNotes).toBeUndefined()
+      expect(pair.public.activeClue?.answer).toBeUndefined()
+      room = await game.engine.pause(room)
+      expect((await game.engine.publicSnapshot(room)).activeClue?.revealNotes).toBeUndefined()
+      room = await game.engine.resume(room)
+      await game.engine.submitAnswer(room, game.playerOne.id, 100)
+      await game.engine.submitAnswer(room, game.playerTwo.id, 200)
+      room = await game.engine.closeAnswers(room)
+      expect((await game.engine.publicSnapshot(room)).activeClue?.revealNotes).toBeUndefined()
+      room = await game.engine.reveal(room)
+      const snapshot = await game.engine.publicSnapshot(room)
+      expect(snapshot.activeClue).toMatchObject({ answer: 100, revealNotes: revealNotes.trim() })
+      expect(snapshot.results).toEqual(expect.arrayContaining([
+        expect.objectContaining({ playerId: game.playerOne.id, correct: 1 }),
+        expect.objectContaining({ playerId: game.playerTwo.id, correct: 0 }),
+      ]))
+    } finally { game.engine.dispose() }
+  })
+})
 describe('game engine', () => {
   it('builds paired snapshots once without exposing host configuration or unrevealed answers', async () => {
     const game = await createGame()

@@ -20,6 +20,20 @@ function categories(patch: Partial<PreviewDraftClue> = {}): PreviewDraftCategory
 }
 
 describe('pack draft preview', () => {
+  it.each([false, true])('shows unsaved price details only on reveal (final: %s)', (finalQuestion) => {
+    const draft = categories({ type: 'price_slider', finalQuestion,
+      config: { correctPrice: 0, prefix: '$', revealNotes: ' \nFree admission\n<strong>All exhibits</strong>\n ' } })
+    const original = structuredClone(draft)
+    expect(clueFromDraft(draft, clue.key, false)?.clue.revealNotes).toBeUndefined()
+    expect(clueFromDraft(draft, clue.key, true)).toMatchObject({ finalQuestion, clue: {
+      revealedAnswer: '$0', revealNotes: 'Free admission\n<strong>All exhibits</strong>',
+    } })
+    expect(draft).toEqual(original)
+    for (const revealNotes of [undefined, '', ' \n ']) {
+      draft[0]!.clues[0]!.config.revealNotes = revealNotes
+      expect(clueFromDraft(draft, clue.key, true)?.clue.revealNotes).toBeUndefined()
+    }
+  })
   it('previews the complete Link order manually without a legacy single-song source or a draft mutation', () => {
     const draft = categories({ config: { correctAnswer: 'Connection',
       link: { mediaAssetIds: ['song one', 'two', 'three', 'four'], hintDelaySeconds: 12,

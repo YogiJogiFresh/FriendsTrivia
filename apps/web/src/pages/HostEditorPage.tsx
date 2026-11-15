@@ -1113,6 +1113,19 @@ export function HostEditorPage() {
                           <summary>Answer reveal (optional)</summary>
                           <div className={styles.revealContent}>
                             <p className={styles.helperText}>Play a song or show a GIF when the answer is revealed.</p>
+                            {clue.type === 'price_slider' ? (
+                              <TextareaField
+                                id={`price-reveal-notes-${clue.key}`}
+                                label="Price and details (optional)"
+                                hint="Shown beneath the correct price on reveal (up to 2000 characters). Not used for scoring; keep Correct price set to the numeric answer."
+                                rows={4}
+                                maxLength={2000}
+                                value={clue.config.revealNotes ?? ''}
+                                onChange={(event) => updateClue(selectedCategory.key, clue.key, {
+                                  config: { ...clue.config, revealNotes: event.target.value },
+                                })}
+                              />
+                            ) : null}
                             {clue.config.link ? (
                               <TextareaField
                                 id={`link-reveal-notes-${clue.key}`}

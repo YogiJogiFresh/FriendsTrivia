@@ -22,6 +22,25 @@ afterEach(async () => {
 })
 
 describe('portable pack bundles', () => {
+  it.each([false, true])('round-trips price reveal details in v2 bundles (final: %s)', async (finalQuestion) => {
+    const root = fs.mkdtempSync(path.join(process.cwd(), '.test-price-notes-'))
+    const database = openDatabase(':memory:')
+    cleanups.push(() => { database.close(); fs.rmSync(root, { recursive: true, force: true }) })
+    const packs = new PackRepository(database), media = new MediaRepository(database)
+    const created = await packs.create({ title: 'Prices' })
+    const config = { correctPrice: 0, min: 0, max: 100, step: 1, prefix: '$',
+      revealNotes: 'Free admission\nIncludes all exhibits' }
+    const saved = (await packs.replace(created.id, {
+      title: 'Prices', status: 'ready', categories: [{ title: 'Prices', clues: [{
+        type: 'price_slider', boardValue: 100, prompt: 'Price?', finalQuestion, config,
+      }] }],
+    }))!
+    const bundle = await createPackBundle(saved, media, root)
+    const manifest = JSON.parse(new TextDecoder().decode(unzipSync(bundle)['pack.json']!))
+    expect(manifest.schemaVersion).toBe(2)
+    const imported = await importPackBundle(bundle, packs, media, root) as typeof saved
+    expect(imported.categories[0]?.clues[0]).toMatchObject({ finalQuestion, config })
+  })
   it('exports Link playlists as v3, deduplicates all references and remaps ordered song IDs on import', async () => {
     const root = fs.mkdtempSync(path.join(process.cwd(), '.test-link-bundle-'))
     const sourceRoot = path.join(root, 'source'), targetRoot = path.join(root, 'target')
