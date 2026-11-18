@@ -22,6 +22,8 @@ import {
 } from '../components'
 import { QuestionGif } from '../components/common/QuestionGif'
 import { DisplayLobbyRoster } from '../components/lobby/DisplayLobbyRoster'
+import { AnsweredPlayers } from '../components/answers/AnsweredPlayers'
+import { RoundResults } from '../components/leaderboard/RoundResults'
 import styles from './DisplayPage.module.css'
 
 const SILENT_AUDIO =
@@ -520,6 +522,7 @@ export function DisplayPage() {
             totalSeconds={currentClue.timerSeconds}
             paused={isPaused}
           />
+          <AnsweredPlayers players={game.players} connected={game.connection === 'connected'} progress={game.room.answerProgress} />
         </FittedClue>
       ) : null}
 
@@ -581,8 +584,7 @@ export function DisplayPage() {
 
       {game.room.phase === 'LEADERBOARD' ? (
         <div className={styles.main}>
-          <span className={styles.categoryLabel}>Leaderboard</span>
-          <Leaderboard entries={game.leaderboard} />
+          <RoundResults entries={game.leaderboard} breakdown={game.answerBreakdown} />
         </div>
       ) : null}
 

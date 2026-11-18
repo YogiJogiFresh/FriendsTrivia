@@ -103,6 +103,7 @@ export interface RawSnapshot {
   specialVotedPlayerIds?: string[]
   forcedPlayerId?: string
   answerProgress?: { answered: number; total: number }
+  answeredPlayerIds?: string[]
   activeClue?: RawActiveClue
   usedClueIds: string[]
   board: RawBoardRow[]
@@ -125,7 +126,7 @@ export function expectedRoomContext(snapshot: RawSnapshot | null) {
 }
 
 export type RawAnswerProgress = Pick<RawSnapshot,
-  'code' | 'roomGeneration' | 'stateVersion' | 'snapshotSequence' | 'phase' | 'attempt' | 'window' | 'answerProgress'
+  'code' | 'roomGeneration' | 'stateVersion' | 'snapshotSequence' | 'phase' | 'attempt' | 'window' | 'answerProgress' | 'answeredPlayerIds'
 > & { clueId?: string }
 
 export function applyAnswerProgress(snapshot: RawSnapshot | null, update: RawAnswerProgress): RawSnapshot | null {
@@ -135,7 +136,8 @@ export function applyAnswerProgress(snapshot: RawSnapshot | null, update: RawAns
     snapshot.window !== update.window || snapshot.stateVersion !== update.stateVersion ||
     snapshot.phase !== update.phase ||
     (update.snapshotSequence ?? 0) <= (snapshot.snapshotSequence ?? 0)) return snapshot
-  return { ...snapshot, answerProgress: update.answerProgress, snapshotSequence: update.snapshotSequence }
+  return { ...snapshot, answerProgress: update.answerProgress, answeredPlayerIds: update.answeredPlayerIds,
+    snapshotSequence: update.snapshotSequence }
 }
 
 const ACCENT_TOKENS = [
@@ -276,15 +278,16 @@ export function scoreDeltasFromSnapshot(
     : undefined
 }
 
-export function playersFromSnapshot(snapshot: Pick<RawSnapshot, 'players' | 'submissions'>): Player[] {
-  const answered = new Set((snapshot.submissions ?? []).map((submission) => submission.playerId))
+export function playersFromSnapshot(snapshot: Pick<RawSnapshot, 'players' | 'submissions' | 'answeredPlayerIds'>): Player[] {
+  const answeredIds = snapshot.answeredPlayerIds ?? snapshot.submissions?.map((submission) => submission.playerId)
+  const answered = new Set(answeredIds)
   return snapshot.players.map((player) => ({
     id: player.playerId,
     nickname: player.nickname,
     teamName: player.teamName,
     score: player.score,
     connected: player.connected,
-    hasAnsweredCurrentClue: snapshot.submissions ? answered.has(player.playerId) : undefined,
+    hasAnsweredCurrentClue: answeredIds ? answered.has(player.playerId) : undefined,
   }))
 }
 

@@ -77,6 +77,21 @@ the release must include all three artifacts for automatic updates to work.
 5. Players scan the QR code or open the LAN URL, enter the four-character room code, and choose a team when teams are enabled.
 6. Start the game, select clues from the host control, and use the reveal/leaderboard controls between clues.
 
+When the board is complete, **Start Final Question** opens the existing wager stage if the pack
+has a Final Question. It does not start automatically. After the Final leaderboard, choose
+**Finish game** to show the winners.
+
+Enter submits a free-text answer just like **Submit answer**, including Link and Final Question.
+Host controls and Display show answered-player names in real time, without revealing their answers.
+Status-only player IDs are public progress data; player screens do not display the live names.
+
+At the leaderboard stage, host, Display and player screens show multiple-choice counts and
+percentages or each player's exact free-text response. Percentages include all currently eligible
+players, including disconnected seats, with **No answer** shown separately; whole-number rounding
+can make the total differ from 100%. Forced Player counts only the selected player. Team games
+still show individual responses beside the team leaderboard. Long results scroll manually;
+they sit beside the leaderboard on wide screens and stack on narrow screens.
+
 ### Casting the shared display
 
 From the live host room, choose **Cast display**. FriendsTrivia provides the LAN audience-display

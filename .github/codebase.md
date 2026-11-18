@@ -77,6 +77,14 @@ Public/player snapshots and host snapshots have different information.
 Client audio preparation and playback are presentation concerns; authoritative
 phase/deadline/scoring decisions belong to the server.
 
+`lib\hostCommands.ts` chooses the next manual host action, preserving Final wagers
+after the ordinary board. AnswerPanel uses one guarded native form submission path.
+Current-attempt answered-player IDs travel with full snapshots and the existing
+coalesced/fenced answer-progress updates; only host/Display render live names.
+`lib\answerBreakdown.ts` derives eligible choice percentages and exact named text
+from settled results, while `components\leaderboard\RoundResults.tsx` renders them
+with the unchanged leaderboard on all three screens, only during LEADERBOARD.
+
 ## Important subsystems and contracts
 
 `packages\shared\src` contains clue/configuration contracts, socket contracts,

@@ -6,6 +6,8 @@ export interface HostControlBarProps {
   phase: GamePhase
   allAnswered?: boolean
   hasCurrentClue?: boolean
+  canStartFinal?: boolean
+  nextAction?: string
   onGoBack?: () => void
   onResetClue?: () => void
   onCloseAnswers?: () => void
@@ -24,6 +26,8 @@ export function HostControlBar({
   phase,
   allAnswered = false,
   hasCurrentClue = false,
+  canStartFinal = false,
+  nextAction,
   onGoBack,
   onResetClue,
   onCloseAnswers,
@@ -39,7 +43,6 @@ export function HostControlBar({
     phase === 'ACCEPTING_ANSWERS' ||
     phase === 'FINAL_QUESTION' ||
     phase === 'ANSWERS_CLOSED'
-  const canStartFinal = phase === 'BOARD' || phase === 'LEADERBOARD'
   const canReset = hasCurrentClue && phase !== 'FINAL_WAGER'
 
   return (
@@ -67,9 +70,9 @@ export function HostControlBar({
         </Button>
       </div>
       <div className={styles.row}>
-        <Button variant="secondary" onClick={onStartFinal} disabled={!canStartFinal}>
+        {nextAction !== 'startFinal' ? <Button variant="secondary" onClick={onStartFinal} disabled={!canStartFinal}>
           Final Question
-        </Button>
+        </Button> : null}
         <Button variant="secondary" onClick={onAdjustScore}>
           Adjust score
         </Button>
@@ -80,9 +83,9 @@ export function HostControlBar({
           <Button
             variant="primary"
             onClick={onAdvance}
-            disabled={phase !== 'REVEAL' && phase !== 'LEADERBOARD'}
+            disabled={!nextAction}
           >
-            Advance
+            {nextAction === 'startFinal' ? 'Start Final Question' : nextAction === 'finish' ? 'Finish game' : 'Advance'}
           </Button>
         </div>
       </div>

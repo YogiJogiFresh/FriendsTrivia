@@ -1,0 +1,58 @@
+.results {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-6);
+  width: 100%;
+  max-width: var(--display-max-width);
+  margin-inline: auto;
+  text-align: left;
+}
+
+.section {
+  flex: 1 1 22rem;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.section p {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  overflow-wrap: anywhere;
+}
+
+.table th,
+.table td {
+  padding: var(--space-3) var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: top;
+  text-align: left;
+}
+
+.table thead {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.table td {
+  font-variant-numeric: tabular-nums;
+}
+
+.textAnswers {
+  table-layout: fixed;
+}
+
+.textAnswers th:first-child {
+  width: 35%;
+}
+
+.textAnswers td {
+  white-space: pre-wrap;
+}

@@ -109,25 +109,33 @@ export class GameEngine extends EventEmitter {
   }
   private async answerState(room: RoomRecord, includeHost: boolean) {
     const accepting = room.state.phase === 'ACCEPTING_ANSWERS' || room.state.phase === 'FINAL_QUESTION'
+    const contentPhase = room.state.phase === 'PAUSED' ? room.state.previousPhase : room.state.phase
+    const showStatus = Boolean(room.state.activeClueId &&
+      ['CLUE_READY', 'ACCEPTING_ANSWERS', 'FINAL_QUESTION', 'ANSWERS_CLOSED'].includes(contentPhase ?? '') &&
+      (this.activeSpecial(room) !== 'forced_player' || room.state.forcedPlayerId))
     const players = await this.rooms.scores(room.id)
-    const submissions = room.state.activeClueId && (includeHost || accepting) ? await this.submissions(room) : []
+    const submissions = room.state.activeClueId && (includeHost || showStatus) ? await this.submissions(room) : []
     const eligible = this.activeSpecial(room) === 'forced_player'
       ? players.filter(({ playerId }) => playerId === room.state.forcedPlayerId)
       : players
-    const answered = new Set(submissions.map(({ playerId }) => playerId))
-    return { players, submissions, answerProgress: accepting ? {
-      answered: eligible.filter(({ playerId }) => answered.has(playerId)).length,
+    const answered = new Set(submissions.filter(({ answer }) => answer !== null).map(({ playerId }) => playerId))
+    const answeredPlayerIds = eligible.filter(({ playerId }) => answered.has(playerId)).map(({ playerId }) => playerId)
+    return { players, submissions, answeredPlayerIds: showStatus ? answeredPlayerIds : undefined, answerProgress: accepting ? {
+      answered: answeredPlayerIds.length,
       total: eligible.length,
     } : undefined }
   }
   async answerProgressSnapshot(room: RoomRecord) {
-    return this.readRoom(room.id, async (current) => ({
-      code: current.code, roomGeneration: current.ref.generation,
-      stateVersion: current.stateVersion, snapshotSequence: ++this.snapshotSequence,
-      phase: current.state.phase, clueId: current.state.activeClueId,
-      attempt: current.state.attempt ?? 0, window: current.state.window ?? 0,
-      answerProgress: (await this.answerState(current, false)).answerProgress,
-    }))
+    return this.readRoom(room.id, async (current) => {
+      const { answerProgress, answeredPlayerIds } = await this.answerState(current, false)
+      return {
+        code: current.code, roomGeneration: current.ref.generation,
+        stateVersion: current.stateVersion, snapshotSequence: ++this.snapshotSequence,
+        phase: current.state.phase, clueId: current.state.activeClueId,
+        attempt: current.state.attempt ?? 0, window: current.state.window ?? 0,
+        answerProgress, answeredPlayerIds,
+      }
+    })
   }
   async snapshotPair(room: RoomRecord, includeHost = true) {
     return diagnosticTime('snapshot', () => this.readRoom(room.id, async (room) => {
@@ -155,7 +163,7 @@ export class GameEngine extends EventEmitter {
           : Boolean(room.state.linkHintDeadline && Date.parse(room.state.linkHintDeadline) <= Date.now()))
       const mediaUrl = (id: string) =>
         `/api/media/${encodeURIComponent(id)}/stream${this.scopeMediaToRoom ? `?roomCode=${encodeURIComponent(room.code)}` : ''}`
-      const { players, submissions, answerProgress } = await this.answerState(room, includeHost)
+      const { players, submissions, answerProgress, answeredPlayerIds } = await this.answerState(room, includeHost)
       const publicSnapshot = {
         code: room.code,
         joinUrl: `${this.joinBaseUrl}/play/${room.code}`,
@@ -223,6 +231,7 @@ export class GameEngine extends EventEmitter {
         board,
         players,
         answerProgress,
+        answeredPlayerIds,
         results: revealed && clue
           ? (await this.resultView(room)) : undefined,
       }

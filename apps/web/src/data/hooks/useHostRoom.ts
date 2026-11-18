@@ -13,6 +13,7 @@ import {
   scoreDeltasFromSnapshot,
 } from '../../lib/snapshot'
 import type { RawSnapshot } from '../../lib/snapshot'
+import { answerBreakdownFromSnapshot } from '../../lib/answerBreakdown'
 import { useConnectionStatus } from './useConnectionStatus'
 import { traceEvent } from '../../lib/diagnostics'
 import { commandObserved, type CommandReceipt } from '../../lib/hostCommands'
@@ -255,6 +256,7 @@ export function useHostRoom(roomCode: string): HostRoomResult {
     currentClueId: snapshot.activeClue?.id ?? null,
     wageredPlayerIds: snapshot.wageredPlayerIds ?? [],
     priceResults: priceResultsFromSnapshot(snapshot),
+    answerBreakdown: answerBreakdownFromSnapshot(snapshot),
     connection,
   }
 

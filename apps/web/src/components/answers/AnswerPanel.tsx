@@ -48,7 +48,7 @@ export function AnswerPanel({ clue, disabled = false, submitted = false, onSubmi
   }, [clue.type, selectedOptionId, freeText])
 
   async function handleSubmitClick() {
-    if (pending.current || disabled || submitted || !hasAnswer) return
+    if (pending.current || disabled || submitted || phase === 'submitted' || !hasAnswer) return
     pending.current = true
     setSubmitError(null)
     setPhase('submitting')
@@ -70,7 +70,10 @@ export function AnswerPanel({ clue, disabled = false, submitted = false, onSubmi
   const isSubmitted = submitted || phase === 'submitted'
   const controlsDisabled = disabled || phase === 'submitting'
   return (
-    <div className={styles.panel}>
+    <form className={styles.panel} onSubmit={(event) => {
+      event.preventDefault()
+      void handleSubmitClick()
+    }}>
       {!isSubmitted || clue.questionGif || clue.link ?
         <p className={styles.prompt} aria-live={clue.link ? 'polite' : undefined}>{clue.prompt}</p> : null}
       {clue.questionGif ? <QuestionGif key={`${clue.id}-${clue.questionGif.url}`} gif={clue.questionGif} /> : null}
@@ -103,11 +106,11 @@ export function AnswerPanel({ clue, disabled = false, submitted = false, onSubmi
 
       {submitError ? <p role="alert" className={styles.submitError}>{submitError}</p> : null}
       <div className={styles.actions}>
-        <Button variant="primary" size="lg" fullWidth disabled={controlsDisabled || !hasAnswer} onClick={handleSubmitClick}>
+        <Button type="submit" variant="primary" size="lg" fullWidth disabled={controlsDisabled || !hasAnswer}>
           {phase === 'submitting' ? 'Submitting...' : 'Submit answer'}
         </Button>
       </div>
       </>}
-    </div>
+    </form>
   )
 }

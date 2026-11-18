@@ -196,6 +196,7 @@ export function registerSocketServer(app: FastifyInstance, rooms: RoomRepository
             phase: snapshot.phase, clueId: snapshot.activeClue?.id,
             attempt: snapshot.attempt, window: snapshot.window,
             answerProgress: snapshot.answerProgress,
+            answeredPlayerIds: snapshot.answeredPlayerIds,
           })
         }
         if (snapshots.host) emitHostSnapshot(room.id, snapshots.host)

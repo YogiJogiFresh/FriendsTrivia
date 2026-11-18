@@ -1,3 +1,16 @@
+import type { GameState } from '../data/types'
+
+export function nextHostAction(game: Pick<GameState, 'room' | 'categories' | 'clues' | 'currentClueId'>) {
+  const { room, categories, clues, currentClueId } = game
+  if (room.phase === 'REVEAL') return 'leaderboard'
+  if (room.phase !== 'BOARD' && room.phase !== 'LEADERBOARD') return undefined
+  if (room.finalRound) return room.phase === 'LEADERBOARD' ? 'finish' : undefined
+  const remaining = categories.some(category => category.clueIds.some(id =>
+    id !== currentClueId && clues.some(clue => clue.id === id && !clue.used)))
+  if (!remaining && room.hasFinalQuestion) return 'startFinal'
+  return room.phase === 'LEADERBOARD' ? remaining ? 'board' : 'finish' : undefined
+}
+
 export interface CommandReceipt {
   roomGeneration: string
   stateVersion: number

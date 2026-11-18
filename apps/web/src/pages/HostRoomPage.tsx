@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { commandLabels } from '../lib/hostCommands'
+import { commandLabels, nextHostAction } from '../lib/hostCommands'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useHostRoom } from '../data/hooks'
 import { useCountdown } from '../data/hooks/useCountdown'
@@ -22,6 +22,8 @@ import {
   TextField,
 } from '../components'
 import styles from './HostRoomPage.module.css'
+import { AnsweredPlayers } from '../components/answers/AnsweredPlayers'
+import { RoundResults } from '../components/leaderboard/RoundResults'
 
 /**
  * Live host-control shell. Every action here is a `host:command` sent
@@ -87,9 +89,7 @@ export function HostRoomPage() {
   const { categories, clues, players, room } = game
   const displayUrl = new URL(`/display/${encodeURIComponent(roomCode)}`, room.joinUrl).href
   const phase = room.phase
-  const remainingClues = clues.filter(
-    (clue) => !clue.used && clue.id !== game.currentClueId,
-  ).length
+  const nextAction = nextHostAction(game)
   const isPaused = phase === 'PAUSED'
   const wageredCount = game.wageredPlayerIds.length
   const allPlayersWagered = players.length > 0 && wageredCount === players.length
@@ -111,13 +111,7 @@ export function HostRoomPage() {
   }
 
   function handleAdvance() {
-    if (phase === 'REVEAL') {
-      run('leaderboard')
-      return
-    }
-    if (phase === 'LEADERBOARD') {
-      run(remainingClues > 0 ? 'board' : 'finish')
-    }
+    if (nextAction) run(nextAction)
   }
 
   async function handleEndSession() {
@@ -255,11 +249,7 @@ export function HostRoomPage() {
                   paused={isPaused}
                 />
               ) : null}
-              {phase === 'ACCEPTING_ANSWERS' || phase === 'FINAL_QUESTION' ? (
-                <p className={styles.noticeText}>
-                  {room.answerProgress?.answered ?? 0}/{room.answerProgress?.total ?? players.length} players answered
-                </p>
-              ) : null}
+              <AnsweredPlayers players={players} connected={game.connection === 'connected'} progress={room.answerProgress} />
             </Card>
           ) : null}
 
@@ -280,8 +270,8 @@ export function HostRoomPage() {
 
           {phase === 'LEADERBOARD' ? (
             <Card>
-              <h2>Leaderboard</h2>
-              <Leaderboard entries={game.leaderboard} />
+              <RoundResults entries={game.leaderboard} breakdown={game.answerBreakdown} />
+              {nextAction === 'startFinal' ? <p>All board clues are complete. Players wager before the Final Question.</p> : null}
             </Card>
           ) : null}
 
@@ -296,6 +286,8 @@ export function HostRoomPage() {
             <HostControlBar
               phase={phase}
               allAnswered={allAnswered}
+              nextAction={nextAction}
+              canStartFinal={room.hasFinalQuestion && !room.finalRound && (phase === 'BOARD' || phase === 'LEADERBOARD')}
               hasCurrentClue={Boolean(currentClue)}
               onGoBack={() => run('goBack')}
               onResetClue={() => run('resetClue')}

@@ -352,7 +352,7 @@ describe('socket persistence acknowledgements', () => {
     let room = await game.engine.startGame(game.room)
     room = await game.engine.selectClue(room, game.clueId)
     await new Promise((resolve) => setTimeout(resolve, 150))
-    const progress: Array<{ answerProgress: { answered: number; total: number } }> = []
+    const progress: Array<{ answerProgress: { answered: number; total: number }; answeredPlayerIds: string[] }> = []
     const fullSnapshots: unknown[] = []
     watcher.on('room:answer-progress', (next) => progress.push(next))
     watcher.on('room:snapshot', (next) => fullSnapshots.push(next))
@@ -370,10 +370,12 @@ describe('socket persistence acknowledgements', () => {
     expect(progress.length).toBeLessThan(10)
     for (const next of progress) {
       expect(Object.keys(next).sort()).toEqual([
-        'answerProgress', 'attempt', 'clueId', 'code', 'phase',
+        'answerProgress', 'answeredPlayerIds', 'attempt', 'clueId', 'code', 'phase',
         'roomGeneration', 'snapshotSequence', 'stateVersion', 'window',
       ])
+      expect(new Set(next.answeredPlayerIds).size).toBe(next.answerProgress.answered)
     }
+    expect(progress.at(-1)?.answeredPlayerIds).toHaveLength(50)
     expect((await game.engine.publicSnapshot(room)).phase).toBe('ACCEPTING_ANSWERS')
   }, 20000)
   it('shares reconnects still executing on the server instead of queuing another mutation', async () => {

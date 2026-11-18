@@ -32,9 +32,8 @@ export function RosterList({ players, onKickPlayer }: RosterListProps) {
           <span className={styles.actions}>
             {!player.connected ? (
               <Badge tone="neutral">Reconnecting…</Badge>
-            ) : player.hasAnsweredCurrentClue ? (
-              <Badge tone="success">Answered</Badge>
             ) : null}
+            {player.hasAnsweredCurrentClue ? <Badge tone="success">Answered</Badge> : null}
             {onKickPlayer && !player.isHost ? (
               <button
                 type="button"

@@ -332,21 +332,56 @@ describe('game engine', () => {
     const pair = await game.engine.snapshotPair(room)
     expect(reads).toHaveBeenCalledTimes(1)
     expect(pair.public.answerProgress).toEqual({ answered: 1, total: 2 })
+    expect(pair.public.answeredPlayerIds).toEqual([game.playerOne.id])
     expect(pair.public).not.toHaveProperty('submissions')
     expect(pair.host?.submissions).toHaveLength(1)
     await game.engine.submitAnswer(room, game.playerTwo.id, 'Dancing Queen')
     expect((await game.engine.publicSnapshot(room)).answerProgress).toEqual({ answered: 2, total: 2 })
     room = await game.engine.pause(room)
-    expect((await game.engine.publicSnapshot(room)).answerProgress).toBeUndefined()
+    const paused = await game.engine.publicSnapshot(room)
+    expect(paused.answerProgress).toBeUndefined()
+    expect(paused.answeredPlayerIds).toEqual(expect.arrayContaining([game.playerOne.id, game.playerTwo.id]))
     room = await game.engine.resume(room)
     expect((await game.engine.publicSnapshot(room)).answerProgress).toEqual({ answered: 2, total: 2 })
     await game.rooms.kickPlayer(room.id, game.playerOne.id)
-    expect((await game.engine.publicSnapshot(room)).answerProgress).toEqual({ answered: 1, total: 1 })
+    expect(await game.engine.publicSnapshot(room)).toMatchObject({
+      answerProgress: { answered: 1, total: 1 }, answeredPlayerIds: [game.playerTwo.id],
+    })
     room = await game.engine.resetClue(room)
     expect((await game.engine.publicSnapshot(room)).answerProgress).toEqual({ answered: 0, total: 1 })
+    expect((await game.engine.publicSnapshot(room)).answeredPlayerIds).toEqual([])
     await game.rooms.kickPlayer(room.id, game.playerTwo.id)
     expect((await game.engine.publicSnapshot(room)).answerProgress).toEqual({ answered: 0, total: 0 })
     game.engine.dispose()
+  })
+  it('retains status IDs after closing, but clears them on reveal and the next clue', async () => {
+    const game = await createGame()
+    try {
+      let room = await game.engine.startGame(game.room)
+      room = await game.engine.selectClue(room, game.clueIds[0]!)
+      await game.engine.submitAnswer(room, game.playerOne.id, '<b>Exact answer</b>')
+      room = await game.engine.closeAnswers(room)
+      expect((await game.engine.publicSnapshot(room)).answeredPlayerIds).toEqual([game.playerOne.id])
+      room = await game.engine.reveal(room)
+      expect((await game.engine.publicSnapshot(room)).answeredPlayerIds).toBeUndefined()
+      room = await game.engine.showLeaderboard(room)
+      room = await game.engine.returnToBoard(room)
+      room = await game.engine.selectClue(room, game.clueIds[1]!)
+      expect((await game.engine.publicSnapshot(room)).answeredPlayerIds).toEqual([])
+    } finally { game.engine.dispose() }
+  })
+  it('does not label synthetic missing-answer penalties as real submissions after closure', async () => {
+    const game = await createGame()
+    try {
+      let room = await game.engine.startGame(game.room)
+      room = await game.rooms.saveState(room.id, { ...room.state,
+        specialAssignments: { [game.clueIds[0]!]: 'double_or_nothing' },
+      }, room.status, room.stateVersion)
+      room = await game.engine.selectClue(room, game.clueIds[0]!)
+      await game.engine.submitAnswer(room, game.playerOne.id, 'Wrong')
+      room = await game.engine.closeAnswers(room)
+      expect((await game.engine.publicSnapshot(room)).answeredPlayerIds).toEqual([game.playerOne.id])
+    } finally { game.engine.dispose() }
   })
   it('settles all 50 active price answers and reverses only game awards on reset', async () => {
     const game = await createGame()

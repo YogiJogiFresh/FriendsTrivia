@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyAnswerProgress, expectedRoomContext, roomFromSnapshot, type RawSnapshot } from './snapshot'
+import { applyAnswerProgress, expectedRoomContext, playersFromSnapshot, roomFromSnapshot, type RawSnapshot } from './snapshot'
 
 const snapshot: RawSnapshot = {
   code: 'ABC123',
@@ -55,14 +55,28 @@ describe('expectedRoomContext', () => {
 })
 
 describe('answer progress', () => {
-  const active = { ...snapshot, phase: 'ACCEPTING_ANSWERS' as const, snapshotSequence: 10 }
-  const update = { ...active, snapshotSequence: 11, answerProgress: { answered: 2, total: 2 } }
+  const active = { ...snapshot, phase: 'ACCEPTING_ANSWERS' as const, snapshotSequence: 10,
+    players: [{ playerId: 'alex', nickname: 'Alex', score: 0, connected: false, teamName: null }],
+    answeredPlayerIds: [] }
+  const update = { ...active, snapshotSequence: 11, answerProgress: { answered: 1, total: 1 },
+    answeredPlayerIds: ['alex'] }
 
   it('merges aggregate progress without replacing board data or leaking private submissions', () => {
     const next = applyAnswerProgress(active, update)!
     expect(next.board).toBe(active.board)
-    expect(roomFromSnapshot(next).answerProgress).toEqual({ answered: 2, total: 2 })
+    expect(roomFromSnapshot(next).answerProgress).toEqual({ answered: 1, total: 1 })
+    expect(playersFromSnapshot(next)[0]).toMatchObject({ connected: false, hasAnsweredCurrentClue: true })
     expect(next).not.toHaveProperty('submissions')
+  })
+
+  it('prefers public eligible IDs over private submissions and clears names for a fresh attempt', () => {
+    expect(playersFromSnapshot({ ...active, submissions: [{ playerId: 'alex', elapsedMs: 1, receivedAt: '' }] })[0]
+      ?.hasAnsweredCurrentClue).toBe(false)
+    const answered = applyAnswerProgress(active, update)!
+    const reset = { ...active, attempt: 4, window: 5, snapshotSequence: 12 }
+    expect(applyAnswerProgress(reset, update)).toBe(reset)
+    expect(playersFromSnapshot(reset)[0]?.hasAnsweredCurrentClue).toBe(false)
+    expect(playersFromSnapshot(answered)[0]?.hasAnsweredCurrentClue).toBe(true)
   })
 
   it('rejects stale progress, other rooms, and previous clue/window generations', () => {

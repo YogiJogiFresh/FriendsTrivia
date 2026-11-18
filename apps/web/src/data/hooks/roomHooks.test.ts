@@ -52,6 +52,7 @@ vi.mock('./useConnectionStatus', () => ({ useConnectionStatus: () => 'connected'
 
 import { usePlayerRoom } from './usePlayerRoom'
 import { useHostRoom } from './useHostRoom'
+import { useRoomWatch } from './useRoomWatch'
 import { SocketAckError } from '../../lib/socketClient'
 import { ADMIN_LOCKED, ADMIN_UNLOCKED } from '../../lib/adminAuth'
 
@@ -100,6 +101,48 @@ afterEach(() => {
   vi.useRealTimers()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
+})
+
+describe('shared clue feedback', () => {
+  const active = { ...snapshot, phase: 'ACCEPTING_ANSWERS' as const, snapshotSequence: 10,
+    activeClue: { id: 'clue', categoryId: 'category', type: 'music_free_text' as const,
+      prompt: 'What links them?', boardValue: 100, timerSeconds: 30 },
+    answeredPlayerIds: [],
+    answerProgress: { answered: 0, total: 1 },
+  }
+  it('restores public status IDs after a progress/bootstrap race and rejects the previous attempt', async () => {
+    let resolve!: (value: RawSnapshot) => void
+    harness.emit.mockReturnValue(new Promise<RawSnapshot>(done => { resolve = done }))
+    render(() => useRoomWatch('ROOM'))
+    const progress = { code: active.code, roomGeneration: active.roomGeneration, stateVersion: active.stateVersion,
+      snapshotSequence: 11, phase: active.phase, clueId: 'clue', attempt: active.attempt, window: active.window,
+      answeredPlayerIds: ['alex'], answerProgress: { answered: 1, total: 1 } }
+    event('room:answer-progress', progress)
+    resolve(active); await settle()
+    expect(render(() => useRoomWatch('ROOM')).game?.players[0]?.hasAnsweredCurrentClue).toBe(true)
+    event('room:snapshot', { ...active, attempt: 2, window: 2, snapshotSequence: 12 })
+    event('room:answer-progress', { ...progress, snapshotSequence: 13 })
+    expect(render(() => useRoomWatch('ROOM')).game?.players[0]?.hasAnsweredCurrentClue).toBe(false)
+  })
+
+  it.each([
+    ['host', useHostRoom, 'host:snapshot'],
+    ['Display', useRoomWatch, 'room:snapshot'],
+    ['player', usePlayerRoom, 'room:snapshot'],
+  ] as const)('maps leaderboard-only exact text for %s without retaining previous results', async (_name, hook, channel) => {
+    harness.emit.mockResolvedValue(active)
+    render(() => hook('ROOM')); await settle()
+    const results = [{ playerId: 'alex', answer: '"<b>Exact text</b>"', correct: 0,
+      rank: null, pointsAwarded: -100, evaluation: null }]
+    event(channel, { ...active, phase: 'REVEAL', results, snapshotSequence: 11 })
+    expect(render(() => hook('ROOM')).game?.answerBreakdown).toBeUndefined()
+    event(channel, { ...active, phase: 'LEADERBOARD', results, snapshotSequence: 12 })
+    expect(render(() => hook('ROOM')).game?.answerBreakdown).toMatchObject({
+      kind: 'free-text', total: 1, responses: [{ playerId: 'alex', answer: '<b>Exact text</b>' }],
+    })
+    event(channel, { ...active, attempt: 2, snapshotSequence: 13 })
+    expect(render(() => hook('ROOM')).game?.answerBreakdown).toBeUndefined()
+  })
 })
 
 describe('host admin reauthentication', () => {

@@ -1,0 +1,9 @@
+.status {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.names {
+  color: var(--color-teal);
+}

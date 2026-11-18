@@ -40,7 +40,10 @@ export function FreeTextAnswer({
         autoComplete="off"
         autoCorrect="off"
         spellCheck={false}
-        enterKeyHint="done"
+        enterKeyHint="send"
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' && (event.nativeEvent.isComposing || event.keyCode === 229)) event.preventDefault()
+        }}
       />
       <span className={styles.count} aria-live="polite">
         {value.length}/{maxLength}

@@ -133,6 +133,10 @@ export interface PriceResultEntry {
   overbid: boolean
 }
 
+export type AnswerBreakdown =
+  | { kind: 'multiple-choice'; total: number; choices: { label: string; count: number; percentage: number }[] }
+  | { kind: 'free-text'; total: number; responses: { playerId: string; nickname: string; answer: string | null }[] }
+
 /** Matches `apps/server/src/game/types.ts`'s `GamePhase` exactly. */
 export type GamePhase =
   | 'LOBBY'
@@ -178,6 +182,7 @@ export interface GameState {
   wageredPlayerIds: string[]
   /** Best revealed guesses for a price clue, ordered by awarded points. */
   priceResults?: PriceResultEntry[]
+  answerBreakdown?: AnswerBreakdown
   /** The current player's own result for the just-revealed clue, if any. */
   ownResult?: {
     correct: boolean

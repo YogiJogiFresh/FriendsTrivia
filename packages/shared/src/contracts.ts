@@ -661,6 +661,7 @@ export const RoomPublicSnapshotSchema = z
     activeClue: ActivePublicClueSchema.nullable(),
     specialVotedPlayerIds: z.array(EntityIdSchema).max(50).default([]),
     forcedPlayerId: EntityIdSchema.optional(),
+    answeredPlayerIds: z.array(EntityIdSchema).max(50).optional(),
     leaderboard: z.array(LeaderboardEntrySchema).max(50),
   })
   .strict()

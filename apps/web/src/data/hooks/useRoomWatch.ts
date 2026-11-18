@@ -12,6 +12,7 @@ import {
   scoreDeltasFromSnapshot,
 } from '../../lib/snapshot'
 import type { RawSnapshot, RawAnswerProgress } from '../../lib/snapshot'
+import { answerBreakdownFromSnapshot } from '../../lib/answerBreakdown'
 import { useConnectionStatus } from './useConnectionStatus'
 import { diagnosticsEnabled, traceEvent } from '../../lib/diagnostics'
 
@@ -114,6 +115,7 @@ export function useRoomWatch(roomCode: string): RoomWatchResult {
     currentClueId: snapshot.activeClue?.id ?? null,
     wageredPlayerIds: snapshot.wageredPlayerIds ?? [],
     priceResults: priceResultsFromSnapshot(snapshot),
+    answerBreakdown: answerBreakdownFromSnapshot(snapshot),
     connection,
   }
 

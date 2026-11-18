@@ -19,6 +19,7 @@ import {
 import type { AnswerSubmission } from '../components'
 import { QuestionGif } from '../components/common/QuestionGif'
 import styles from './PlayPage.module.css'
+import { RoundResults } from '../components/leaderboard/RoundResults'
 
 /**
  * Player phone controller shell. Designed for one-thumb use: the primary
@@ -429,8 +430,8 @@ export function PlayPage() {
 
         {game.room.phase === 'LEADERBOARD' ? (
           <>
-            <h1>Leaderboard</h1>
-            <Leaderboard entries={game.leaderboard} />
+            <h1>Round results</h1>
+            <RoundResults entries={game.leaderboard} breakdown={game.answerBreakdown} />
           </>
         ) : null}
 

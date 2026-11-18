@@ -13,6 +13,7 @@ import {
   scoreDeltasFromSnapshot,
 } from '../../lib/snapshot'
 import type { RawSnapshot } from '../../lib/snapshot'
+import { answerBreakdownFromSnapshot } from '../../lib/answerBreakdown'
 import { useConnectionStatus } from './useConnectionStatus'
 import { answerScope, hasAnswer, playerSnapshot } from '../../lib/playerState'
 import { traceEvent } from '../../lib/diagnostics'
@@ -485,6 +486,7 @@ export function usePlayerRoom(roomCode: string): PlayerRoomResult {
         currentClueId: snapshot.activeClue?.id ?? null,
         wageredPlayerIds: snapshot.wageredPlayerIds ?? [],
         ownResult: ownResultFromSnapshot(snapshot, playerId),
+        answerBreakdown: answerBreakdownFromSnapshot(snapshot),
         connection: reconnecting && connection === 'connected' ? 'reconnecting' : connection,
       }
     : null
