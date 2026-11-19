@@ -85,10 +85,11 @@ coalesced/fenced answer-progress updates; only host/Display render live names.
 from settled results, while `components\leaderboard\RoundResults.tsx` renders them
 with the unchanged leaderboard on all three screens, only during LEADERBOARD.
 Display opts into choice bars in `RoundResults`; other callers retain tables.
-`components\answers\DisplayAnswerBubbles.tsx` reserves edge/compact space outside
-the fitted clue, using existing public status and the adjacent `lib\bubbleCompletion.ts`
-transition helper for a silent once-per-attempt celebration. Its motion freezes
-during pause/reconnection and is disabled for crowded/reduced-motion layouts.
+`components\answers\DisplayAnswerBubbles.tsx` overlays the fitted clue with
+pointer-transparent floating names, using `lib\bubbleMotion.ts` for bounded
+movement/collisions and measured crowding fallback. Existing public status and
+`lib\bubbleCompletion.ts` drive the silent once-per-attempt celebration.
+Motion freezes during pause/reconnection; crowded/reduced-motion layouts are static.
 Host's shared `AnsweredPlayers` presentation and player screens stay unchanged.
 
 ## Important subsystems and contracts

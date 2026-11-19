@@ -117,7 +117,7 @@ describe('Link clues', () => {
       room = await game.engine.selectClue(room, game.clueIds[0]!)
       const deadline = room.state.deadline
       const pair = await game.engine.snapshotPair(room)
-      expect(pair.public.activeClue).toMatchObject({ prompt: 'Listen to the four songs. What links them?',
+      expect(pair.public.activeClue).toMatchObject({ prompt: 'Listen to the four songs. Both the song titles and artist names can help you find the connection. A hint will appear later.',
         link: { hintVisible: false, mediaUrls: ['/api/media/test-media/stream', '/api/media/link-two/stream',
           '/api/media/link-three/stream', '/api/media/link-four/stream'] } })
       expect(pair.public.activeClue?.mediaUrl).toBeUndefined()

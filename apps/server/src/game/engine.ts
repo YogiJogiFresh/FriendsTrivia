@@ -187,7 +187,7 @@ export class GameEngine extends EventEmitter {
             boardValue: visibleClue.boardValue,
             prompt: votingHidden
               ? 'Vote for the player who must answer this clue.'
-              : hintVisible ? visibleClue.prompt : 'Listen to the four songs. What links them?',
+              : hintVisible ? visibleClue.prompt : 'Listen to the four songs. Both the song titles and artist names can help you find the connection. A hint will appear later.',
             timerSeconds: this.effectiveTimerSeconds(room, visibleClue),
             special: link || visibleClue.finalQuestion ? undefined : room.state.specialAssignments?.[visibleClue.id],
             link: link && !votingHidden ? {
