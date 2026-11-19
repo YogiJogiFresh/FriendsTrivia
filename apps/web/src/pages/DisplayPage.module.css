@@ -113,6 +113,7 @@
 .clueMain {
   flex: 1 1 0;
   display: flex;
+  min-width: 0;
   min-height: 0;
   padding: var(--space-2);
 }
@@ -153,15 +154,6 @@
 
 .fitContent .revealGif img {
   max-width: 100%;
-}
-
-.answersComplete {
-  margin: 0;
-  padding: var(--space-2) var(--space-4);
-  border: 1px solid var(--color-success);
-  border-radius: var(--radius-md);
-  color: var(--color-success);
-  font-weight: var(--font-weight-bold);
 }
 
 .lobbyLayout {

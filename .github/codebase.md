@@ -84,6 +84,12 @@ coalesced/fenced answer-progress updates; only host/Display render live names.
 `lib\answerBreakdown.ts` derives eligible choice percentages and exact named text
 from settled results, while `components\leaderboard\RoundResults.tsx` renders them
 with the unchanged leaderboard on all three screens, only during LEADERBOARD.
+Display opts into choice bars in `RoundResults`; other callers retain tables.
+`components\answers\DisplayAnswerBubbles.tsx` reserves edge/compact space outside
+the fitted clue, using existing public status and the adjacent `lib\bubbleCompletion.ts`
+transition helper for a silent once-per-attempt celebration. Its motion freezes
+during pause/reconnection and is disabled for crowded/reduced-motion layouts.
+Host's shared `AnsweredPlayers` presentation and player screens stay unchanged.
 
 ## Important subsystems and contracts
 

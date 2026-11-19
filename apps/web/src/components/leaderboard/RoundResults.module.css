@@ -56,3 +56,56 @@
 .textAnswers td {
   white-space: pre-wrap;
 }
+
+.choiceBars {
+  display: grid;
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.choiceRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(3ch, auto);
+  gap: var(--space-2) var(--space-3);
+  align-items: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.choiceLabel {
+  grid-column: 1 / -1;
+  overflow-wrap: anywhere;
+}
+
+.choiceTrack {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 2.5rem;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--color-surface-raised);
+}
+
+.choiceFill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--choice-color);
+}
+
+.choicePercentage {
+  position: relative;
+  margin: var(--space-1);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-weight: var(--font-weight-bold);
+  white-space: nowrap;
+}
+
+.choiceCount {
+  white-space: nowrap;
+  text-align: right;
+}

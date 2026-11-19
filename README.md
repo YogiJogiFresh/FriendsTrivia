@@ -84,6 +84,10 @@ has a Final Question. It does not start automatically. After the Final leaderboa
 Enter submits a free-text answer just like **Submit answer**, including Link and Final Question.
 Host controls and Display show answered-player names in real time, without revealing their answers.
 Status-only player IDs are public progress data; player screens do not display the live names.
+On Display, answered names float in reserved edge lanes and settle into a compact layout when
+space is tight. Bubbles freeze during pause/reconnection and remain until Reveal or leaving the
+clue. A live all-answered transition gets one silent celebration; reduced motion uses static
+names. Large rooms trade text size for keeping every name visible.
 
 At the leaderboard stage, host, Display and player screens show multiple-choice counts and
 percentages or each player's exact free-text response. Percentages include all currently eligible
@@ -91,6 +95,8 @@ players, including disconnected seats, with **No answer** shown separately; whol
 can make the total differ from 100%. Forced Player counts only the selected player. Team games
 still show individual responses beside the team leaderboard. Long results scroll manually;
 they sit beside the leaderboard on wide screens and stack on narrow screens.
+Display presents multiple-choice results as colored bars, with percentages inside and player
+counts to the right; **No answer** is neutral. Host/player statistics keep their table view.
 
 ### Casting the shared display
 

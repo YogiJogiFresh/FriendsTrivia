@@ -22,7 +22,7 @@ import {
 } from '../components'
 import { QuestionGif } from '../components/common/QuestionGif'
 import { DisplayLobbyRoster } from '../components/lobby/DisplayLobbyRoster'
-import { AnsweredPlayers } from '../components/answers/AnsweredPlayers'
+import { DisplayAnswerBubbles } from '../components/answers/DisplayAnswerBubbles'
 import { RoundResults } from '../components/leaderboard/RoundResults'
 import styles from './DisplayPage.module.css'
 
@@ -95,6 +95,14 @@ export function DisplayPage() {
   const currentMediaUrl = currentClue?.mediaUrl
   const currentRevealMediaUrl = currentClue?.revealMediaUrl
   const gamePhase = game?.room.phase
+  const questionScope = JSON.stringify([roomCode, game?.room.generation, currentClueId, game?.room.attempt])
+  const questionPhase = gamePhase === 'CLUE_READY' || gamePhase === 'ACCEPTING_ANSWERS' ||
+    gamePhase === 'FINAL_QUESTION' || gamePhase === 'ANSWERS_CLOSED'
+  const [questionContext, setQuestionContext] = useState({ scope: questionScope, active: questionPhase })
+  if (gamePhase && gamePhase !== 'PAUSED' &&
+    (questionContext.scope !== questionScope || questionContext.active !== questionPhase)) {
+    setQuestionContext({ scope: questionScope, active: questionPhase })
+  }
   const phaseRef = useRef(gamePhase)
   useLayoutEffect(() => { phaseRef.current = gamePhase }, [gamePhase])
   const revealAudio = gamePhase === 'REVEAL'
@@ -360,14 +368,9 @@ export function DisplayPage() {
   }
 
   const isPaused = game.room.phase === 'PAUSED'
-  const isQuestion = Boolean(currentClue) && (
-    gamePhase === 'CLUE_READY' || gamePhase === 'ACCEPTING_ANSWERS' ||
-    gamePhase === 'FINAL_QUESTION' || gamePhase === 'ANSWERS_CLOSED')
+  const isQuestion = Boolean(currentClue) && (questionPhase ||
+    (isPaused && questionContext.scope === questionScope && questionContext.active))
   const fittedView = gamePhase === 'BOARD' || isQuestion || (gamePhase === 'REVEAL' && Boolean(currentClue))
-  const allAnswered = game.connection === 'connected' &&
-    (game.room.phase === 'ACCEPTING_ANSWERS' || game.room.phase === 'FINAL_QUESTION') &&
-    Boolean(game.room.answerProgress && game.room.answerProgress.total > 0 &&
-      game.room.answerProgress.answered === game.room.answerProgress.total)
 
   return (
     <div className={[styles.shell, fittedView || gamePhase === 'LOBBY' ? styles.fittedShell : ''].join(' ')}>
@@ -488,8 +491,12 @@ export function DisplayPage() {
       ) : null}
 
       {isQuestion && currentClue ? (
-        <FittedClue key={clueZoom.viewKey} zoom={zoomPercent / 100}>
-          {allAnswered ? <p className={styles.answersComplete} role="status">All answers received</p> : null}
+        <DisplayAnswerBubbles key={questionScope} scope={questionScope}
+          players={currentClue.special === 'forced_player'
+            ? game.players.filter(player => player.id === game.room.forcedPlayerId) : game.players}
+          connected={game.connection === 'connected'} progress={game.room.answerProgress}
+          paused={isPaused} accepting={gamePhase === 'ACCEPTING_ANSWERS' || gamePhase === 'FINAL_QUESTION'}>
+        <FittedClue zoom={zoomPercent / 100}>
           <span className={styles.categoryLabel}>
             {game.room.finalRound
               ? 'Final Question'
@@ -522,8 +529,8 @@ export function DisplayPage() {
             totalSeconds={currentClue.timerSeconds}
             paused={isPaused}
           />
-          <AnsweredPlayers players={game.players} connected={game.connection === 'connected'} progress={game.room.answerProgress} />
         </FittedClue>
+        </DisplayAnswerBubbles>
       ) : null}
 
       {game.room.phase === 'REVEAL' && currentClue ? (
@@ -584,7 +591,7 @@ export function DisplayPage() {
 
       {game.room.phase === 'LEADERBOARD' ? (
         <div className={styles.main}>
-          <RoundResults entries={game.leaderboard} breakdown={game.answerBreakdown} />
+          <RoundResults entries={game.leaderboard} breakdown={game.answerBreakdown} choicePresentation="bars" />
         </div>
       ) : null}
 
