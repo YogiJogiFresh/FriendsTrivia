@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyAnswerProgress, expectedRoomContext, playersFromSnapshot, roomFromSnapshot, type RawSnapshot } from './snapshot'
+import { applyAnswerProgress, cluesFromSnapshot, expectedRoomContext, playersFromSnapshot, priceResultsFromSnapshot, roomFromSnapshot, type RawSnapshot } from './snapshot'
 
 const snapshot: RawSnapshot = {
   code: 'ABC123',
@@ -67,6 +67,40 @@ describe('answer progress', () => {
     expect(roomFromSnapshot(next).answerProgress).toEqual({ answered: 1, total: 1 })
     expect(playersFromSnapshot(next)[0]).toMatchObject({ connected: false, hasAnsweredCurrentClue: true })
     expect(next).not.toHaveProperty('submissions')
+  })
+
+  describe('price reveal mapping', () => {
+    const price = { ...snapshot, phase: 'FINAL_QUESTION' as const,
+      activeClue: { id: 'price', categoryId: 'prices', type: 'price_slider' as const,
+        prompt: 'Price?', boardValue: 100, timerSeconds: 30,
+        price: { min: 0, max: 200, step: 1, prefix: '$' } } }
+    it('defaults legacy rules on and carries only a numeric revealed target', () => {
+      expect(cluesFromSnapshot(price)[0]).toMatchObject({ allowOverbid: true, revealedPrice: undefined })
+      expect(cluesFromSnapshot({ ...price, activeClue: { ...price.activeClue, answer: 0 } })[0])
+        .toMatchObject({ revealedPrice: 0 })
+      expect(cluesFromSnapshot({ ...price, activeClue: { ...price.activeClue, answer: '$100',
+        price: { ...price.activeClue.price, allowOverbid: false } } })[0])
+        .toMatchObject({ allowOverbid: false, revealedPrice: undefined })
+    })
+    it('uses the revealed price, not a missing Final rank, to identify actual above-target guesses', () => {
+      const revealed = { ...price, phase: 'REVEAL' as const, activeClue: { ...price.activeClue, answer: 100 },
+        results: [
+          { playerId: 'under', answer: '90', correct: 1, rank: null, pointsAwarded: 20, evaluation: null },
+          { playerId: 'over', answer: '110', correct: 1, rank: 1, pointsAwarded: 20, evaluation: null },
+          { playerId: 'missing', answer: 'null', correct: 0, rank: null, pointsAwarded: -20, evaluation: null },
+        ] }
+      expect(priceResultsFromSnapshot(revealed)).toEqual(expect.arrayContaining([
+        expect.objectContaining({ playerId: 'under', overbid: false }),
+        expect.objectContaining({ playerId: 'over', overbid: true }),
+      ]))
+      expect(priceResultsFromSnapshot(revealed)).toHaveLength(2)
+      expect(priceResultsFromSnapshot(price)).toBeUndefined()
+    })
+    it('retains every real guess for the distribution, not only the three closest', () => {
+      const results = Array.from({ length: 50 }, (_, index) => ({ playerId: `p${index}`, answer: String(index),
+        correct: 0, rank: index + 1, pointsAwarded: 0, evaluation: null }))
+      expect(priceResultsFromSnapshot({ ...price, phase: 'REVEAL', results })).toHaveLength(50)
+    })
   })
 
   it('prefers public eligible IDs over private submissions and clears names for a fresh attempt', () => {

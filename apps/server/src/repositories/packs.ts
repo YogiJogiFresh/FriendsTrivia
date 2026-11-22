@@ -148,6 +148,9 @@ export function validatePack(input: {
         }
       }
       else {
+        if (config.allowOverbid !== undefined && typeof config.allowOverbid !== 'boolean') {
+          throw new Error('Allow Overbid must be a boolean')
+        }
         if (config.revealNotes !== undefined &&
           (typeof config.revealNotes !== 'string' || config.revealNotes.length > 2000)) {
           throw new Error('Price reveal details must be text of at most 2000 characters')

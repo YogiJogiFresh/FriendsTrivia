@@ -106,6 +106,89 @@ async function createLinkGame(delay = 10, specials: SpecialType[] = [], finalQue
   return game
 }
 
+describe('price overbid rules', () => {
+  it.each([
+    { flag: undefined, target: 100, min: 0, guesses: [90, 101], points: [360, 396], ranks: [2, 1] },
+    { flag: true, target: 100, min: 0, guesses: [99, 101], points: [396, 396], ranks: [1, 1] },
+    { flag: false, target: 100, min: 0, guesses: [90, 101], points: [360, 0], ranks: [1, null] },
+    { flag: undefined, target: 1.2, min: 0, guesses: [1.1, 1.3], points: [367, 367], ranks: [1, 1] },
+    { flag: true, target: 100, min: 50, guesses: [75, 125], points: [200, 200], ranks: [1, 1] },
+    { flag: true, target: 100, min: 100, guesses: [101, 100], points: [0, 400], ranks: [2, 1] },
+    { flag: true, target: 100, min: 0, guesses: [0, 200], points: [0, 0], ranks: [1, 1] },
+  ])('settles ordinary prices by the selected rule: $guesses (overbids: $flag)', async ({ flag, target, min, guesses, points, ranks }) => {
+    const game = await createGame()
+    try {
+      game.database.prepare('UPDATE clues SET config_json = ? WHERE id = ?')
+        .run(JSON.stringify({ correctPrice: target, min, max: 200, step: 0.01, allowOverbid: flag }), game.clueIds[1])
+      let room = await game.engine.startGame(game.room)
+      room = await game.engine.selectClue(room, game.clueIds[1]!)
+      const active = (await game.engine.publicSnapshot(room)).activeClue
+      expect(active).toMatchObject({ price: { allowOverbid: flag !== false } })
+      expect(active?.answer).toBeUndefined()
+      for (const [index, player] of [game.playerOne, game.playerTwo].entries()) {
+        await game.engine.submitAnswer(room, player.id, guesses[index]!)
+      }
+      room = await game.engine.closeAnswers(room)
+      room = await game.engine.reveal(room)
+      const results = (await game.engine.publicSnapshot(room)).results
+      for (const [index, player] of [game.playerOne, game.playerTwo].entries()) {
+        expect(results).toContainEqual(expect.objectContaining({
+          playerId: player.id, pointsAwarded: points[index], rank: ranks[index],
+        }))
+      }
+    } finally { game.engine.dispose() }
+  })
+  it.each([
+    { flag: undefined, target: 100, guesses: [90, 110], wins: [true, true] },
+    { flag: false, target: 100, guesses: [90, 110], wins: [true, false] },
+    { flag: true, target: 100, guesses: [101, 102], wins: [true, false] },
+    { flag: false, target: 100, guesses: [101, 102], wins: [false, false] },
+    { flag: true, target: 100, guesses: [100, 101], wins: [true, false] },
+    { flag: undefined, target: 1.2, guesses: [1.1, 1.3], wins: [true, true] },
+    { flag: true, target: 100, guesses: [], wins: [false, false] },
+  ])('settles Final closest distances and missing answers: $guesses (overbids: $flag)', async ({ flag, target, guesses, wins }) => {
+    const game = await createGame()
+    try {
+      game.database.prepare('UPDATE clues SET config_json = ?, is_final = 1 WHERE id = ?')
+        .run(JSON.stringify({ correctPrice: target, min: 0, max: 200, step: 0.01, allowOverbid: flag }), game.clueIds[1])
+      const missing = (await game.rooms.join(game.room, 'No response')).player
+      let room = await game.engine.startGame(game.room)
+      for (const player of [game.playerOne, game.playerTwo, missing]) {
+        await game.engine.adjustScore(room, player.id, 100, 'Fixture wager seed')
+      }
+      room = await game.engine.startFinalRound(room)
+      for (const [index, player] of [game.playerOne, game.playerTwo, missing].entries()) {
+        await game.engine.submitFinalWager(room, player.id, [20, 30, 10][index]!)
+      }
+      room = await game.engine.startFinalQuestion(room)
+      if (guesses[0] !== undefined) await game.engine.submitAnswer(room, game.playerOne.id, guesses[0])
+      if (guesses[1] !== undefined) await game.engine.submitAnswer(room, game.playerTwo.id, guesses[1])
+      room = await game.engine.closeAnswers(room)
+      room = await game.engine.reveal(room)
+      expect((await game.engine.publicSnapshot(room)).results).toEqual(expect.arrayContaining([
+        expect.objectContaining({ playerId: game.playerOne.id, pointsAwarded: wins[0] ? 20 : -20 }),
+        expect.objectContaining({ playerId: game.playerTwo.id, pointsAwarded: wins[1] ? 30 : -30 }),
+        expect.objectContaining({ playerId: missing.id, pointsAwarded: -10, answer: 'null' }),
+      ]))
+    } finally { game.engine.dispose() }
+  })
+  it.each(['double_points', 'double_or_nothing'] as const)('applies %s to allowed above-target points', async special => {
+    const game = await createGame()
+    try {
+      let room = await game.engine.startGame(game.room)
+      room = await game.rooms.saveState(room.id, { ...room.state,
+        specialAssignments: { [game.clueIds[1]!]: special } }, room.status, room.stateVersion)
+      room = await game.engine.selectClue(room, game.clueIds[1]!)
+      await game.engine.submitAnswer(room, game.playerOne.id, 101)
+      room = await game.engine.closeAnswers(room)
+      room = await game.engine.reveal(room)
+      expect((await game.engine.publicSnapshot(room)).results).toContainEqual(expect.objectContaining({
+        playerId: game.playerOne.id, pointsAwarded: 792,
+      }))
+    } finally { game.engine.dispose() }
+  })
+})
+
 describe('Link clues', () => {
   afterEach(() => vi.useRealTimers())
 
@@ -404,7 +487,7 @@ describe('game engine', () => {
     room = await game.engine.selectClue(room, game.clueIds[1]!)
     for (let index = 0; index < 105; index++) {
       const joined = await game.rooms.join(room, `Replacement ${index}`)
-      await game.engine.submitAnswer(room, joined.player.id, 100)
+      await game.engine.submitAnswer(room, joined.player.id, index % 2 ? 90 : 110)
       await game.rooms.kickPlayer(room.id, joined.player.id)
     }
     await game.engine.submitAnswer(room, game.playerOne.id, 100)
@@ -412,6 +495,8 @@ describe('game engine', () => {
     expect((await game.rooms.scores(room.id)).find(({ playerId }) => playerId === game.playerOne.id)?.score).toBe(400)
     expect(game.database.prepare('SELECT COUNT(*) AS count FROM result_chunks').get()).toEqual({ count: 3 })
     expect(game.database.prepare('SELECT COUNT(*) AS count FROM submissions').get()).toEqual({ count: 106 })
+    expect(game.database.prepare('SELECT DISTINCT rank, points_awarded FROM submissions WHERE player_id != ?')
+      .all(game.playerOne.id)).toEqual([{ rank: 2, points_awarded: 360 }])
     room = await game.engine.resetClue(room)
     expect(game.database.prepare('SELECT SUM(delta) AS score FROM score_events').get()).toEqual({ score: 0 })
     expect(await game.rooms.listPlayers(room.id)).toHaveLength(2)
@@ -721,6 +806,8 @@ describe('game engine', () => {
   })
   it('ranks price guesses without rewarding overbids', async () => {
     const game = (await createGame())
+    game.database.prepare('UPDATE clues SET config_json = ? WHERE id = ?')
+      .run(JSON.stringify({ correctPrice: 100, min: 0, max: 200, step: 1, allowOverbid: false }), game.clueIds[1])
     let room = (await game.engine.startGame(game.room))
     room = (await game.engine.selectClue(room, game.clueIds[1] ?? ''))
     await game.engine.submitAnswer(room, game.playerOne.id, 90)
@@ -829,6 +916,8 @@ describe('game engine', () => {
   })
   it('requires wagers and awards the fixed wager for the final question', async () => {
     const game = (await createGame())
+    game.database.prepare('UPDATE clues SET config_json = ? WHERE id = ?')
+      .run(JSON.stringify({ correctPrice: 100, min: 0, max: 200, step: 1, allowOverbid: false }), game.clueIds[1])
     game.database
       .prepare('UPDATE clues SET is_final = 1 WHERE id = ?')
       .run(game.clueIds[0])

@@ -26,9 +26,9 @@ const SLIDES = [
   },
   {
     eyebrow: 'Step 4',
-    title: 'Get closest without going over',
+    title: 'Get closest to the price',
     description:
-      'For Price Is Right clues, the closest guess at or below the real price wins the most points. Overbids score zero.',
+      'For Price Is Right clues, closer guesses earn more points. Overbids are allowed by default; when turned off, guesses above the real price score zero. Forced Player requires an exact match.',
     callout: 'Use the slider and submit',
   },
   {

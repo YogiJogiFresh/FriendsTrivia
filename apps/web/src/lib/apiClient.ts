@@ -107,6 +107,7 @@ export interface ServerClueConfig {
   correctAnswer?: string
   acceptedAnswers?: string[]
   correctPrice?: number
+  allowOverbid?: boolean
   revealNotes?: string
   min?: number
   max?: number

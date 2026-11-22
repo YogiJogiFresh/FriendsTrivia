@@ -37,6 +37,7 @@ export interface RawPriceConfig {
   max: number
   step: number
   prefix: string
+  allowOverbid?: boolean
 }
 
 export interface RawActiveClue {
@@ -245,6 +246,8 @@ export function cluesFromSnapshot(snapshot: Pick<RawSnapshot, 'board' | 'usedClu
           max: active?.price?.max ?? 100,
           step: active?.price?.step ?? 1,
           unitPrefix: active?.price?.prefix ?? '$',
+          allowOverbid: active?.price?.allowOverbid !== false,
+          revealedPrice: typeof active?.answer === 'number' ? active.answer : undefined,
         }
       }
       return { ...base, type: uiType }
@@ -332,6 +335,7 @@ export function ownResultFromSnapshot(
 export function priceResultsFromSnapshot(snapshot: RawSnapshot): PriceResultEntry[] | undefined {
   if (snapshot.activeClue?.type !== 'price_slider' || !snapshot.results) return undefined
   const nicknames = new Map(snapshot.players.map((player) => [player.playerId, player.nickname]))
+  const target = snapshot.activeClue.answer
   return snapshot.results
     .map((result) => {
       const answer = JSON.parse(result.answer) as unknown
@@ -341,7 +345,7 @@ export function priceResultsFromSnapshot(snapshot: RawSnapshot): PriceResultEntr
         guess: answer === null ? Number.NaN : Number(answer),
         pointsAwarded: result.pointsAwarded,
         rank: result.rank,
-        overbid: result.rank === null,
+        overbid: typeof target === 'number' ? Number(answer) > target : result.rank === null,
       }
     })
     .filter((result) => Number.isFinite(result.guess))
@@ -351,5 +355,4 @@ export function priceResultsFromSnapshot(snapshot: RawSnapshot): PriceResultEntr
         (left.rank ?? Number.MAX_SAFE_INTEGER) - (right.rank ?? Number.MAX_SAFE_INTEGER) ||
         left.nickname.localeCompare(right.nickname),
     )
-    .slice(0, 3)
 }

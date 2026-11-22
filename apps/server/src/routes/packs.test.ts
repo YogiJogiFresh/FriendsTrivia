@@ -13,6 +13,29 @@ afterEach(async () => {
     await cleanup()
 })
 describe('pack deletion', () => {
+  it.each([false, true])('saves price overbid rules without replacing a valid pack on malformed values (final: %s)', async (finalQuestion) => {
+    const database = openDatabase(':memory:'), packs = new PackRepository(database)
+    const pack = await packs.create({ title: 'Prices' })
+    const app = Fastify()
+    await registerPackRoutes(app, packs)
+    cleanups.push(async () => { await app.close(); database.close() })
+    for (const allowOverbid of [undefined, true, false]) {
+      const config = { correctPrice: 10, min: 0, max: 100, step: 1, allowOverbid }
+      const payload = { title: 'Prices', status: 'ready', categories: [{ title: 'Prices', clues: [
+        { type: 'price_slider', boardValue: 100, prompt: 'Price?', finalQuestion, config },
+      ] }] }
+      expect((await app.inject({ method: 'PUT', url: `/api/packs/${pack.id}`, payload })).statusCode).toBe(200)
+      for (const invalid of [null, 'false', 0, [], {}]) {
+        const bad = structuredClone(payload)
+        Object.assign(bad.categories[0]!.clues[0]!.config, { allowOverbid: invalid })
+        expect((await app.inject({ method: 'PUT', url: `/api/packs/${pack.id}`, payload: bad })).statusCode).toBe(400)
+        const saved = (await app.inject({ method: 'GET', url: `/api/packs/${pack.id}` })).json()
+        expect(saved.categories[0].clues[0]).toMatchObject({
+          finalQuestion, config: JSON.parse(JSON.stringify(config)),
+        })
+      }
+    }
+  })
   it('preserves price reveal details and rejects invalid text without replacing saved content', async () => {
     const database = openDatabase(':memory:')
     const packs = new PackRepository(database)

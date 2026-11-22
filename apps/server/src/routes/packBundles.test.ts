@@ -22,14 +22,16 @@ afterEach(async () => {
 })
 
 describe('portable pack bundles', () => {
-  it.each([false, true])('round-trips price reveal details in v2 bundles (final: %s)', async (finalQuestion) => {
+  it.each([
+    [false, undefined], [false, true], [false, false], [true, undefined], [true, true], [true, false],
+  ] as const)('round-trips price rules and reveal details in v2 bundles (final: %s, overbids: %s)', async (finalQuestion, allowOverbid) => {
     const root = fs.mkdtempSync(path.join(process.cwd(), '.test-price-notes-'))
     const database = openDatabase(':memory:')
     cleanups.push(() => { database.close(); fs.rmSync(root, { recursive: true, force: true }) })
     const packs = new PackRepository(database), media = new MediaRepository(database)
     const created = await packs.create({ title: 'Prices' })
     const config = { correctPrice: 0, min: 0, max: 100, step: 1, prefix: '$',
-      revealNotes: 'Free admission\nIncludes all exhibits' }
+      revealNotes: 'Free admission\nIncludes all exhibits', ...(allowOverbid === undefined ? {} : { allowOverbid }) }
     const saved = (await packs.replace(created.id, {
       title: 'Prices', status: 'ready', categories: [{ title: 'Prices', clues: [{
         type: 'price_slider', boardValue: 100, prompt: 'Price?', finalQuestion, config,

@@ -84,7 +84,7 @@ describe('music scoring', () => {
 
 describe('ranked price scoring', () => {
   it('retains competition ranks and tie anchors across pages beyond 50 lifetime answers', () => {
-    const score = createPriceAnswerScorer({ clueId: 'price', targetPrice: 100, boardValue: 100 })
+    const score = createPriceAnswerScorer({ clueId: 'price', targetPrice: 100, boardValue: 100, allowOverbid: false })
     const firstPage = Array.from({ length: 50 }, (_, index) => score({ playerId: `p-${index}`, guess: 100 }))
     const next = score({ playerId: 'replacement', guess: 90 })
     expect(firstPage.every(({ rank }) => rank === 1)).toBe(true)
@@ -106,6 +106,7 @@ describe('ranked price scoring', () => {
   })
   it('uses closest-without-going-over, competition ranks, ties, and zeroed overbids', () => {
     const result = scorePriceAnswers({
+      allowOverbid: false,
       clueId: 'clue-price',
       targetPrice: 100,
       boardValue: 1000,
@@ -193,6 +194,7 @@ describe('ranked price scoring', () => {
 
   it('scales points across the configured range and gives overbids zero', () => {
     const result = scorePriceAnswers({
+      allowOverbid: false,
       clueId: 'clue-price',
       targetPrice: 100,
       minimumPrice: 50,
@@ -226,5 +228,40 @@ describe('ranked price scoring', () => {
         ],
       }),
     ).toThrow(/Duplicate price answer/)
+  })
+  it('defaults to nearest absolute distance, including symmetric overbids and clamped distant guesses', () => {
+    const result = scorePriceAnswers({ clueId: 'price', targetPrice: 100, minimumPrice: 50, boardValue: 100,
+      answers: [{ playerId: 'far', guess: 200 }, { playerId: 'under', guess: 75 },
+        { playerId: 'over', guess: 125 }, { playerId: 'exact', guess: 100 }] })
+    expect(result.results.map(({ playerId, rank, points, overbid }) => ({ playerId, rank, points, overbid })))
+      .toEqual([
+        { playerId: 'exact', rank: 1, points: 100, overbid: false },
+        { playerId: 'over', rank: 2, points: 50, overbid: true },
+        { playerId: 'under', rank: 2, points: 50, overbid: false },
+        { playerId: 'far', rank: 4, points: 0, overbid: true },
+      ])
+  })
+  it('ties symmetric decimal prices without treating a genuinely closer guess as equal', () => {
+    const result = scorePriceAnswers({ clueId: 'price', targetPrice: 1.2, boardValue: 120,
+      settings: { rankMultipliers: [1], roundTo: 1, tieTolerance: 0 },
+      answers: [{ playerId: 'under', guess: 1.1 }, { playerId: 'over', guess: 1.3 },
+        { playerId: 'closer', guess: 1.11 }] })
+    expect(result.results.map(({ playerId, rank, points }) => ({ playerId, rank, points }))).toEqual([
+      { playerId: 'closer', rank: 1, points: 111 },
+      { playerId: 'under', rank: 2, points: 110 },
+      { playerId: 'over', rank: 2, points: 110 },
+    ])
+  })
+  it('preserves exact-only points at the minimum and enabled ties across lifetime pages', () => {
+    const score = createPriceAnswerScorer({ clueId: 'price', targetPrice: 100, minimumPrice: 100,
+      boardValue: 100, allowOverbid: true })
+    for (let index = 0; index < 50; index++) expect(score({ playerId: `p-${index}`, guess: 100 }).points).toBe(100)
+    expect(score({ playerId: 'under', guess: 99 })).toMatchObject({ rank: 51, points: 0 })
+    expect(score({ playerId: 'over', guess: 101 })).toMatchObject({ rank: 51, points: 0, overbid: true })
+  })
+  it('does not merge an exact guess with a distinct adjacent floating-point guess', () => {
+    const result = scorePriceAnswers({ clueId: 'price', targetPrice: 100, boardValue: 100,
+      answers: [{ playerId: 'exact', guess: 100 }, { playerId: 'adjacent', guess: 100 + Number.EPSILON * 100 }] })
+    expect(result.results.map(result => result.rank)).toEqual([1, 2])
   })
 })

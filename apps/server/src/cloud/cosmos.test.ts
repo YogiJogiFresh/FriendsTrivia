@@ -214,7 +214,9 @@ describe('Cosmos adapter — OFFLINE SDK-seam tests, NOT live Cosmos conformance
     await expect(game.rooms.join(game.room, 'Player 51')).rejects.toThrow('full')
     game.room = await game.engine.startGame(game.room)
     game.room = await game.engine.selectClue(game.room, game.clueId)
-    for (const player of players) await game.engine.submitAnswer(game.room, player.id, 50)
+    for (const [index, player] of players.entries()) {
+      await game.engine.submitAnswer(game.room, player.id, index === 0 ? 50 : index % 2 ? 49 : 51)
+    }
     const before = game.games.batches.length
     game.room = await game.engine.closeAnswers(game.room)
     const writes = game.games.batches.slice(before).filter((batch) => batch.writes.some((write) => write.type !== 'delete' && write.doc.kind === 'result'))
@@ -223,16 +225,20 @@ describe('Cosmos adapter — OFFLINE SDK-seam tests, NOT live Cosmos conformance
     expect(writes[0]!.bytes).toBeLessThan(MAX_BATCH_BYTES)
     const loaded = await game.store.rooms.load(game.room.ref)
     expect(loaded.activeScores).toHaveLength(50)
-    expect(loaded.activeScores.every(({ score }) => score === 100)).toBe(true)
+    expect(loaded.activeScores.filter(({ score }) => score === 100)).toHaveLength(1)
+    expect(loaded.activeScores.filter(({ score }) => score === 98)).toHaveLength(49)
     const attempt = { clueId: game.clueId, attempt: loaded.room.state.attempt! }
     const first = await game.store.rooms.results(game.room.ref, attempt, { limit: 23 })
     const second = await game.store.rooms.results(game.room.ref, attempt, { limit: 30, cursor: first.cursor! })
     expect(first.items).toHaveLength(23)
     expect(second.items).toHaveLength(27)
     expect(second.cursor).toBeUndefined()
+    const exactPlayerId = players[0]!.id
+    expect([...first.items, ...second.items].filter(row => row.playerId !== exactPlayerId)
+      .every(row => row.rank === 2 && row.points === 98)).toBe(true)
     expect((await game.store.history.submissions(game.room.id, { limit: 17 })).items).toHaveLength(17)
     expect((await game.store.history.exportRows(game.room.id, { limit: 2 })).items[0]).toMatchObject({ category: 'Prices', points_awarded: 100, answer_json: '50' })
-    expect((await game.store.history.players(game.room.id)).items.every(({ score }) => score === 100)).toBe(true)
+    expect((await game.store.history.players(game.room.id)).items.every(({ score }) => score === 100 || score === 98)).toBe(true)
   })
   it('recovers uncertain successful commit by immutable receipt and rejects stale CAS and payload reuse', async () => {
     const game = await fixture(), joined = await game.rooms.join(game.room, 'Alex'), loaded = await game.store.rooms.load(game.room.ref)

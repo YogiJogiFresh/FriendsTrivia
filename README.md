@@ -159,6 +159,22 @@ For price clues, **Answer reveal > Price and details** accepts optional multilin
 after reveal, including Final Questions. The numeric **Correct price** still controls scoring;
 the additional text does not replace it.
 
+Price clues have an **Allow Overbid** checkbox, enabled by default, including for
+existing clues without this setting. Guesses rank by distance above or below the
+correct price; equally close guesses tie. Turn it off to restore closest without
+going over. The existing distance-based points curve is unchanged; distant guesses
+can earn zero, and a correct price equal to Min still gives points only for an exact
+guess. Final Questions award wagers to all equally closest eligible guesses.
+Forced Player always requires an exact price.
+
+On the shared Display's answer reveal, a price number line shows every submitted
+name and amount, with an amber correct-price marker and teal guess markers.
+Crowded labels use connected rows and coincident prices share a label. It includes
+Final Questions, stays hidden before reveal, and keeps the ordinary three closest
+guesses and their points below it. Host, player and editor preview screens do not
+show the number line. Large groups/long names can reduce fitted text size; use
+Display zoom and panning to inspect details.
+
 Display loops songs 1 through 4 until **Reveal**, including after answers close. Pause freezes
 playback and the hint delay; Replay Link audio restarts song 1 without resetting either the hint
 or answer clock. Reveal uses its separate song/GIF settings. Audio loading does not postpone the

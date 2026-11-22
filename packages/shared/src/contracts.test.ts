@@ -8,6 +8,7 @@ import {
   ManifestClueSchema,
   PackManifestSchema,
   RelativeContentPathSchema,
+  PriceSliderSchema,
 } from './contracts.js'
 
 const validManifest = {
@@ -41,6 +42,20 @@ const validManifest = {
 } as const
 
 describe('shared contract schemas', () => {
+  it('preserves optional boolean price rules in authored and public slider contracts', () => {
+    const slider = { min: 0, max: 100, step: 1 }
+    const clue = { key: 'price', type: 'PRICE_SLIDER', boardValue: 100, position: 0,
+      prompt: 'Price?', targetPrice: 10, slider }
+    for (const allowOverbid of [undefined, true, false]) {
+      expect(ManifestClueSchema.parse({ ...clue, config: { allowOverbid } }))
+        .toMatchObject({ config: { allowOverbid } })
+      expect(PriceSliderSchema.parse({ ...slider, allowOverbid })).toMatchObject({ ...slider, allowOverbid })
+    }
+    for (const allowOverbid of [null, 'false', 0, {}]) {
+      expect(ManifestClueSchema.safeParse({ ...clue, config: { allowOverbid } }).success).toBe(false)
+      expect(PriceSliderSchema.safeParse({ ...slider, allowOverbid }).success).toBe(false)
+    }
+  })
   it('preserves optional price reveal details without replacing the numeric target', () => {
     const clue = {
       key: 'price-100', type: 'PRICE_SLIDER', boardValue: 100, position: 0,

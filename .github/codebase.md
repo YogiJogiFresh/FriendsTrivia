@@ -92,6 +92,14 @@ movement/collisions and measured crowding fallback. Existing public status and
 Motion freezes during pause/reconnection; crowded/reduced-motion layouts are static.
 Host's shared `AnsweredPlayers` presentation and player screens stay unchanged.
 
+Price rules use optional `config.allowOverbid`, defaulting on. Shared scoring ranks
+absolute distances; the engine merges the existing paged under/over price streams
+without changing storage indexes, and Final settles equal closest distances.
+Explicit false keeps no-overbid scoring; Forced Player remains exact-match.
+`components\answers\PriceGuessDistribution.tsx` and `lib\priceGuessLayout.ts` show
+all real guesses on Display REVEAL only, with measured connected labels and a
+correct-price marker. The existing ordinary closest-three list remains below it.
+
 ## Important subsystems and contracts
 
 `packages\shared\src` contains clue/configuration contracts, socket contracts,

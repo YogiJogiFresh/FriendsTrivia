@@ -1,0 +1,94 @@
+.distribution {
+  width: 100%;
+  max-width: 60rem;
+  margin-inline: auto;
+  text-align: left;
+}
+
+.distribution h2 {
+  margin: 0 0 var(--space-4);
+  font-size: var(--font-size-xl);
+}
+
+.chart {
+  position: relative;
+  width: 100%;
+}
+
+.lines {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.axis {
+  stroke: var(--color-text-muted);
+  stroke-width: 2;
+}
+
+.connector {
+  stroke: var(--color-teal);
+  stroke-width: 1;
+  opacity: 0.55;
+}
+
+.guessMarker {
+  fill: var(--color-teal);
+}
+
+.targetMarker {
+  stroke: var(--color-amber);
+  stroke-width: 4;
+}
+
+.minimum,
+.maximum {
+  position: absolute;
+  top: 0;
+  max-width: 45%;
+  font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
+}
+
+.minimum {
+  left: 0;
+}
+
+.maximum {
+  right: 0;
+  text-align: right;
+}
+
+.targetLabel {
+  position: absolute;
+  width: min(224px, 100%);
+  color: var(--color-amber);
+  text-align: center;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.label {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  width: max-content;
+  max-width: min(14rem, 100%);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-teal);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  font-size: var(--font-size-md);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  box-sizing: border-box;
+}
+
+.label strong {
+  color: var(--color-teal);
+}
+
+.empty {
+  margin: 0;
+  color: var(--color-text-muted);
+}

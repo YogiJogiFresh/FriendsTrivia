@@ -220,6 +220,7 @@ export const PriceSliderSchema = z
     step: z.number().finite().positive(),
     prefix: z.string().max(20).default('$'),
     suffix: z.string().max(20).default(''),
+    allowOverbid: z.boolean().optional(),
   })
   .strict()
   .superRefine((value, context) => {
@@ -243,7 +244,7 @@ export type PriceSlider = z.infer<typeof PriceSliderSchema>
 const priceShape = {
   targetPrice: z.number().finite().min(0).max(1_000_000_000),
   slider: PriceSliderSchema,
-  config: z.object({ revealNotes: z.string().max(2000).optional() }).strict().optional(),
+  config: z.object({ revealNotes: z.string().max(2000).optional(), allowOverbid: z.boolean().optional() }).strict().optional(),
 } as const
 
 const MusicMultipleChoiceClueObjectSchema = z

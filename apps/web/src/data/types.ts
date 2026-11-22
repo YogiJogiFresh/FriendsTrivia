@@ -92,6 +92,8 @@ export interface PriceSliderClue extends BaseClue {
   max: number
   step: number
   unitPrefix?: string
+  allowOverbid?: boolean
+  revealedPrice?: number
 }
 
 export type Clue = MusicMultipleChoiceClue | MusicFreeTextClue | PriceSliderClue
@@ -180,7 +182,7 @@ export interface GameState {
   leaderboard: LeaderboardEntry[]
   currentClueId: string | null
   wageredPlayerIds: string[]
-  /** Best revealed guesses for a price clue, ordered by awarded points. */
+  /** All real revealed price guesses, ordered by awarded points. */
   priceResults?: PriceResultEntry[]
   answerBreakdown?: AnswerBreakdown
   /** The current player's own result for the just-revealed clue, if any. */

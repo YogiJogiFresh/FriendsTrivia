@@ -87,6 +87,7 @@ export interface PriceScoreInput {
   readonly clueId: string
   readonly targetPrice: number
   readonly minimumPrice?: number
+  readonly allowOverbid?: boolean
   readonly boardValue: number
   readonly answers: readonly PriceAnswerForScoring[]
   readonly settings?: PriceScoringSettings
@@ -102,9 +103,18 @@ function comparePlayerIds(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0
 }
 
-// Feed eligible guesses descending, followed by overbids; rank state survives page boundaries.
+export function priceDistancesEqual(left: number, right: number, target: number, tolerance = 0) {
+  if (tolerance === 0 && (left === 0 || right === 0)) return left === right
+  return Math.abs(left - right) <= tolerance +
+    Number.EPSILON * Math.max(Math.abs(target), Math.abs(left), Math.abs(right)) * 4
+}
+
+// Feed guesses nearest-first (or eligible then overbids when disabled); ranks survive pages.
 export function createPriceAnswerScorer(input: Omit<PriceScoreInput, 'answers'>) {
   EntityIdSchema.parse(input.clueId)
+  if (input.allowOverbid !== undefined && typeof input.allowOverbid !== 'boolean') {
+    throw new TypeError('allowOverbid must be a boolean')
+  }
   if (!Number.isFinite(input.targetPrice) || input.targetPrice < 0) {
     throw new RangeError('targetPrice must be a non-negative finite number')
   }
@@ -127,16 +137,21 @@ export function createPriceAnswerScorer(input: Omit<PriceScoreInput, 'answers'>)
     const answer = PriceAnswerForScoringSchema.parse(rawAnswer)
     const distanceFromTarget = Math.abs(input.targetPrice - answer.guess)
     const overbid = answer.guess > input.targetPrice
-    if (overbid) return { ...answer, overbid, distanceFromTarget, rank: null, multiplier: 0, points: 0 }
+    if (overbid && input.allowOverbid === false) return { ...answer, overbid, distanceFromTarget, rank: null, multiplier: 0, points: 0 }
     eligibleCount++
-    if (currentTieDistance === undefined || Math.abs(distanceFromTarget - currentTieDistance) > settings.tieTolerance) {
+    if (currentTieDistance === undefined || (input.allowOverbid === false
+      ? Math.abs(distanceFromTarget - currentTieDistance) > settings.tieTolerance
+      : !priceDistancesEqual(distanceFromTarget, currentTieDistance, input.targetPrice, settings.tieTolerance))) {
       currentRank = eligibleCount
       currentTieDistance = distanceFromTarget
     }
     const scoringRange = input.targetPrice - minimumPrice
+    const pointsDistance = input.allowOverbid !== false &&
+      priceDistancesEqual(distanceFromTarget, currentTieDistance, input.targetPrice)
+      ? currentTieDistance : distanceFromTarget
     const multiplier = scoringRange === 0
       ? distanceFromTarget === 0 ? 1 : 0
-      : Math.max(0, Math.min(1, 1 - distanceFromTarget / scoringRange))
+      : Math.max(0, Math.min(1, 1 - pointsDistance / scoringRange))
     return { ...answer, overbid, distanceFromTarget, rank: currentRank, multiplier,
       points: roundPoints(input.boardValue * multiplier, settings.roundTo) }
   }
@@ -162,7 +177,7 @@ export function scorePriceAnswers(input: PriceScoreInput): PriceScoreResult {
       ...answer,
       distanceFromTarget: Math.abs(input.targetPrice - answer.guess),
     }
-    if (answer.guess > input.targetPrice) {
+    if (answer.guess > input.targetPrice && input.allowOverbid === false) {
       overbids.push(rankedAnswer)
     } else {
       eligible.push(rankedAnswer)

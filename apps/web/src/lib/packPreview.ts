@@ -65,6 +65,7 @@ export function clueFromDraft(categories: PreviewDraftCategory[], clueKey: strin
       max: config.max ?? 100,
       step: config.step ?? 1,
       prefix: config.prefix ?? '$',
+      allowOverbid: config.allowOverbid !== false,
     },
     answer: revealed && (typeof answer === 'number' || answer?.trim()) ? answer : undefined,
   }

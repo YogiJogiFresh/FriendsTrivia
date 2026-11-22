@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events'
 import { randomInt } from 'node:crypto'
-import { createPriceAnswerScorer, matchFreeTextAnswer, scoreMusicAnswer, } from '@friends-trivia/shared'
+import { createPriceAnswerScorer, matchFreeTextAnswer, priceDistancesEqual, scoreMusicAnswer, } from '@friends-trivia/shared'
 import type { AttemptRef, GameClue, RoundOutcome, RoundResult, ScoreAward, Submission } from '../domain.js'
 import { domainFrom, type DomainSource } from '../sqliteStore.js'
 import { createId } from '../ids.js'
@@ -820,9 +820,17 @@ export class GameEngine extends EventEmitter {
     return this.mutate(room, async (room) => {
 
       const wagers = await this.rooms.store.wagers(room.ref, this.attempt(room))
-      const bestPrice = clue.type === 'price_slider'
-        ? (await this.rooms.store.submissions(room.ref, this.attempt(room), { limit: 1 }, 'priceEligible')).items[0]?.answer
-        : undefined
+      const target = Number(config.correctPrice)
+      const priceCandidates: number[] = []
+      if (clue.type === 'price_slider') {
+        for (const order of config.allowOverbid === false
+          ? ['priceEligible'] as const : ['priceEligible', 'priceOverbid'] as const) {
+          const candidate = (await this.rooms.store.submissions(room.ref, this.attempt(room), { limit: 1 }, order)).items[0]
+          if (candidate) priceCandidates.push(Number(candidate.answer))
+        }
+      }
+      const bestDistance = priceCandidates.length
+        ? Math.min(...priceCandidates.map(price => Math.abs(target - price))) : undefined
       const accepted = clue.type === 'price_slider'
         ? []
         : [
@@ -835,7 +843,10 @@ export class GameEngine extends EventEmitter {
         const submission = await this.rooms.store.submissionForPlayer(room.ref, this.attempt(room), wager.playerId)
         const answer = submission ? (submission.answer) : null
         const match = clue.type === 'price_slider'
-          ? { matched: Boolean(submission && Number(submission.answer) === Number(bestPrice)) }
+          ? { matched: Boolean(submission && bestDistance !== undefined &&
+            (config.allowOverbid === false
+              ? Number(submission.answer) === priceCandidates[0]
+              : priceDistancesEqual(Math.abs(target - Number(submission.answer)), bestDistance, target))) }
           : typeof answer === 'string'
             ? matchFreeTextAnswer(answer, accepted)
             : { matched: false }
@@ -967,14 +978,11 @@ export class GameEngine extends EventEmitter {
       if (!Number.isFinite(target)) throw new Error('Price clue has no valid target')
       const scorer = createPriceAnswerScorer({
         clueId: clue.id, targetPrice: target, minimumPrice: Number(config.min ?? 0), boardValue: clue.boardValue,
+        allowOverbid: config.allowOverbid !== false,
         settings: { rankMultipliers: room.settings.priceRankPercentages, roundTo: 1, tieTolerance: 0 },
       })
       const special = this.activeSpecial(room)
-      const answers = async function* (engine: GameEngine) {
-        yield* engine.submissionPages(room, 'priceEligible')
-        yield* engine.submissionPages(room, 'priceOverbid')
-      }
-      for await (const submission of answers(this)) {
+      for await (const submission of this.priceSubmissions(room, target, config.allowOverbid !== false)) {
         const result = scorer({ playerId: submission.playerId, guess: Number(submission.answer) })
         if (!result)
           throw new Error('Price score result is missing')
@@ -1070,6 +1078,35 @@ export class GameEngine extends EventEmitter {
       cursor = page.cursor
     } while (cursor)
   }
+  private async *priceSubmissions(room: RoomRecord, target: number, allowOverbid: boolean): AsyncGenerator<Submission> {
+    if (!allowOverbid) {
+      yield* this.submissionPages(room, 'priceEligible')
+      yield* this.submissionPages(room, 'priceOverbid')
+      return
+    }
+    const under = this.submissionPages(room, 'priceEligible')
+    const over = this.submissionPages(room, 'priceOverbid')
+    let left = await under.next(), right = await over.next()
+    try {
+      while (!left.done || !right.done) {
+        const leftDistance = left.done ? Infinity : Math.abs(target - Number(left.value.answer))
+        const rightDistance = right.done ? Infinity : Math.abs(target - Number(right.value.answer))
+        const takeLeft = right.done || (!left.done &&
+          (leftDistance === rightDistance
+            ? left.value.playerId < right.value.playerId : leftDistance < rightDistance))
+        if (takeLeft) {
+          yield left.value!
+          left = await under.next()
+        } else {
+          yield right.value!
+          right = await over.next()
+        }
+      }
+    } finally {
+      await under.return(undefined)
+      await over.return(undefined)
+    }
+  }
   private async submissions(room: RoomRecord): Promise<Submission[]> {
     const rows: Submission[] = []
     for await (const submission of this.submissionPages(room)) rows.push(submission)
@@ -1137,6 +1174,7 @@ export class GameEngine extends EventEmitter {
       max: Number(config.max ?? 100),
       step: Number(config.step ?? 1),
       prefix: typeof config.prefix === 'string' ? config.prefix : '$',
+      allowOverbid: config.allowOverbid !== false,
     }
   }
   private revealedAnswer(clue: ClueRow, config: Record<string, unknown>): unknown {

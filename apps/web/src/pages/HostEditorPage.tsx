@@ -95,7 +95,7 @@ function defaultConfigForType(type: ServerClueType): ServerClueConfig {
       return { correctAnswer: '', acceptedAnswers: [] }
     case 'price_slider':
     default:
-      return { min: 0, max: 100, step: 1, correctPrice: 50, prefix: '$' }
+      return { min: 0, max: 100, step: 1, correctPrice: 50, prefix: '$', allowOverbid: true }
   }
 }
 
@@ -1056,6 +1056,16 @@ export function HostEditorPage() {
 
                           {clue.type === 'price_slider' ? (
                             <div className={styles.priceGrid}>
+                              <div>
+                                <label className={styles.finalQuestionToggle}>
+                                  <input type="checkbox" checked={clue.config.allowOverbid !== false}
+                                    onChange={(event) => updateClue(selectedCategory.key, clue.key, {
+                                      config: { ...clue.config, allowOverbid: event.target.checked },
+                                    })} />
+                                  Allow Overbid
+                                </label>
+                                <p className={styles.helperText}>Rank guesses by distance above or below the correct price. Turn off to score only guesses at or below it. Forced Player still requires an exact match.</p>
+                              </div>
                               <TextField
                                 label="Min"
                                 type="number"

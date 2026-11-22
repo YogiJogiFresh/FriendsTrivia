@@ -20,6 +20,13 @@ function categories(patch: Partial<PreviewDraftClue> = {}): PreviewDraftCategory
 }
 
 describe('pack draft preview', () => {
+  it.each([undefined, true, false])('maps the price rule without revealing the target early (%s)', (allowOverbid) => {
+    const draft = categories({ type: 'price_slider',
+      config: { min: 0, max: 100, correctPrice: 0, allowOverbid } })
+    expect(clueFromDraft(draft, clue.key, false)?.clue)
+      .toMatchObject({ allowOverbid: allowOverbid !== false, revealedPrice: undefined })
+    expect(clueFromDraft(draft, clue.key, true)?.clue).toMatchObject({ revealedPrice: 0 })
+  })
   it.each([false, true])('shows unsaved price details only on reveal (final: %s)', (finalQuestion) => {
     const draft = categories({ type: 'price_slider', finalQuestion,
       config: { correctPrice: 0, prefix: '$', revealNotes: ' \nFree admission\n<strong>All exhibits</strong>\n ' } })

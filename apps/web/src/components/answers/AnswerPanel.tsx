@@ -93,15 +93,22 @@ export function AnswerPanel({ clue, disabled = false, submitted = false, onSubmi
       ) : null}
 
       {clue.type === 'price-slider' ? (
-        <PriceSliderAnswer
-          min={clue.min}
-          max={clue.max}
-          step={clue.step}
-          value={priceValue}
-          onChange={setPriceValue}
-          unitPrefix={clue.unitPrefix}
-          disabled={controlsDisabled}
-        />
+        <>
+          <p>{clue.special === 'forced_player'
+            ? 'Guess the exact price.'
+            : clue.allowOverbid !== false
+              ? 'Get closest to the correct price. Guesses above or below it count.'
+              : 'Get closest without going over. Guesses above the correct price do not count.'}</p>
+          <PriceSliderAnswer
+            min={clue.min}
+            max={clue.max}
+            step={clue.step}
+            value={priceValue}
+            onChange={setPriceValue}
+            unitPrefix={clue.unitPrefix}
+            disabled={controlsDisabled}
+          />
+        </>
       ) : null}
 
       {submitError ? <p role="alert" className={styles.submitError}>{submitError}</p> : null}

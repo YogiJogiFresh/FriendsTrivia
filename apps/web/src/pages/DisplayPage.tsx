@@ -23,6 +23,7 @@ import {
 import { QuestionGif } from '../components/common/QuestionGif'
 import { DisplayLobbyRoster } from '../components/lobby/DisplayLobbyRoster'
 import { DisplayAnswerBubbles } from '../components/answers/DisplayAnswerBubbles'
+import { PriceGuessDistribution } from '../components/answers/PriceGuessDistribution'
 import { RoundResults } from '../components/leaderboard/RoundResults'
 import styles from './DisplayPage.module.css'
 
@@ -561,20 +562,23 @@ export function DisplayPage() {
               </figcaption> : null}
             </figure>
           ) : null}
+          {currentClue.type === 'price-slider' ? (
+            <PriceGuessDistribution clue={currentClue} guesses={game.priceResults ?? []} />
+          ) : null}
           {currentClue.type === 'price-slider' &&
           !game.room.finalRound &&
           game.priceResults?.length ? (
             <div className={styles.priceResults}>
               <h2>Closest guesses</h2>
               <ol>
-                {game.priceResults.map((result) => (
+                {game.priceResults.slice(0, 3).map((result) => (
                   <li key={result.playerId}>
                     <span>
                       <strong>{result.nickname}</strong>
-                      <span className={result.overbid ? styles.overbid : undefined}>
+                      <span className={result.overbid && currentClue.allowOverbid === false ? styles.overbid : undefined}>
                         {currentClue.unitPrefix ?? '$'}
                         {result.guess.toLocaleString()}
-                        {result.overbid ? ' — over' : ''}
+                        {result.overbid ? currentClue.allowOverbid === false ? ' — over' : ' — above' : ''}
                       </span>
                     </span>
                     <strong>
